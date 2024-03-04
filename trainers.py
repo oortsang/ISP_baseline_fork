@@ -9,7 +9,7 @@ import flax.linen as nn
 import optax
 from swirl_dynamics.templates import train_states
 from swirl_dynamics.templates import trainers
-from models import SwitchNetModel
+from models import DeterministicModel
 
 Array = jax.Array
 ArrayLike = jax.typing.ArrayLike
@@ -17,7 +17,7 @@ VariableDict = trainers.VariableDict
 
 TrainState = train_states.BasicTrainState
 
-class SwitchNetTrainer(trainers.BasicTrainer[SwitchNetModel, TrainState]):
+class DeterministicTrainer(trainers.BasicTrainer[DeterministicModel, TrainState]):
 
   @flax.struct.dataclass
   class TrainMetrics(clu_metrics.Collection):
@@ -34,7 +34,7 @@ class SwitchNetTrainer(trainers.BasicTrainer[SwitchNetModel, TrainState]):
       state: TrainState, core: nn.Module
   ) -> Callable[[ArrayLike], Array]:
     """Builds an encoder inference function from a train state."""
-    return SwitchNetModel.inference_fn(state.model_variables, core)
+    return DeterministicModel.inference_fn(state.model_variables, core)
 
 
       
