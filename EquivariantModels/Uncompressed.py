@@ -68,16 +68,18 @@ class UncompressedModel(nn.Module):
     r_index: np.ndarray 
     
     def setup(self):
-        self.fstar_layer = Fstar(nx=self.nx, neta=self.neta, cart_mat=self.cart_mat, r_index=self.r_index)
+        self.fstar_layer0 = Fstar(nx=self.nx, neta=self.neta, cart_mat=self.cart_mat, r_index=self.r_index)
+        self.fstar_layer1 = Fstar(nx=self.nx, neta=self.neta, cart_mat=self.cart_mat, r_index=self.r_index)
+        self.fstar_layer2 = Fstar(nx=self.nx, neta=self.neta, cart_mat=self.cart_mat, r_index=self.r_index)
         self.convs = [nn.Conv(features=6, kernel_size=(3, 3), padding='SAME') for _ in range(9)]
         self.final_conv = nn.Conv(features=1, kernel_size=(3, 3), padding='SAME')
 
     def __call__(self, inputs):
-        y1 = self.fstar_layer(inputs[:, :, :, 0])
-        y2 = self.fstar_layer(inputs[:, :, :, 1])
-        y3 = self.fstar_layer(inputs[:, :, :, 2])
+        y0 = self.fstar_layer0(inputs[:, :, :, 0])
+        y1 = self.fstar_layer1(inputs[:, :, :, 1])
+        y2 = self.fstar_layer2(inputs[:, :, :, 2])
         
-        y = jnp.concatenate([y1, y2, y3], axis=-1)
+        y = jnp.concatenate([y0, y1, y2], axis = -1)
 
         for conv_layer in self.convs:
             tmp = conv_layer(y)
