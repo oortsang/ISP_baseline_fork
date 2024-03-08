@@ -82,7 +82,7 @@ class SwitchNet(nn.Module):
                       Nw2x=self.Nw2x, Nw2y=self.Nw2y, Nb2x=self.Nb2x, Nb2y=self.Nb2y, r=self.r)
         self.switchnet2 = switchnet(L1=self.L1, L2x=self.L2x, L2y=self.L2y, Nw1=self.Nw1, Nb1=self.Nb1, 
                       Nw2x=self.Nw2x, Nw2y=self.Nw2y, Nb2x=self.Nb2x, Nb2y=self.Nb2y, r=self.r)
-        self.convs = [nn.Conv(features=6, kernel_size=(3, 3), padding='SAME') for _ in range(9)]
+        self.convs = [nn.Conv(features=6, kernel_size=(3, 3), padding='SAME') for _ in range(5)]
         self.final_conv = nn.Conv(features=2, kernel_size=(3, 3), padding='SAME')
         self.DMLayer = DMLayer(1)
         
@@ -95,12 +95,10 @@ class SwitchNet(nn.Module):
         y = jnp.concatenate([y1, y2, y3], axis=-1)
 
         for conv_layer in self.convs:
-            tmp = conv_layer(y)
-            tmp = jax.nn.relu(tmp)
-            y = jnp.concatenate([y, tmp], axis = -1)
-        
+            y = conv_layer(y)
+            y = nn.relu(y)
         y = self.final_conv(y)
-        y = jax.nn.relu(y)
+        
         y = y.reshape((batch_size, self.L2x*self.L2y, 2))
         y = self.DMLayer(y)
         y = y.reshape((batch_size, self.L2x, self.L2y))

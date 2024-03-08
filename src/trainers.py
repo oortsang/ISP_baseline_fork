@@ -9,7 +9,7 @@ import flax.linen as nn
 import optax
 from swirl_dynamics.templates import train_states
 from swirl_dynamics.templates import trainers
-from models import DeterministicModel
+from src.models import DeterministicModel
 
 Array = jax.Array
 ArrayLike = jax.typing.ArrayLike

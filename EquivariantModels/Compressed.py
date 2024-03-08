@@ -11,7 +11,7 @@ def build_permutation_indices(L, l):
     tmp += np.repeat(np.arange(delta), 2)
     tmp = np.tile(tmp, 2**l)
     tmp += np.repeat(np.arange(2**l)*(2**(L-l)), 2**(L-l))
-    return tmp
+    return jnp.asarray(tmp)
 
 # Precomputing indices used for redistributing blocks according to the transformation represented by x -> M*xM.
 def build_switch_indices(L):
@@ -19,7 +19,7 @@ def build_switch_indices(L):
     tmp = np.arange(2**L)*(2**L)
     tmp = np.tile(tmp, 2**L)
     tmp += np.repeat(np.arange(2**L), 2**L)
-    return tmp
+    return jnp.asarray(tmp)
 
 class V(nn.Module):
     r: int
@@ -66,13 +66,8 @@ class V(nn.Module):
         return y
 
 class H(nn.Module):
-    L: int
-    l: int
-
-    def setup(self):
-        # Compute permutation indices
-        self.perm_idx = build_permutation_indices(self.L, self.l)
-
+    perm_idx: jnp.ndarray
+    
     @nn.compact
     def __call__(self, x):
         # Placeholder for actual input shape dependent variables
@@ -169,70 +164,7 @@ class M(nn.Module):
         return y
 
 class G(nn.Module):
-    L: int
-    l: int
-
-    def setup(self):
-        # Setup is called once to create parameters, we'll store perm_idx here but its creation is static
-        self.perm_idx = build_permutation_indices(self.L, self.l)
-
-    @nn.compact
-    def __call__(self, x):
-        # Dimensions need to be dynamically inferred from 'x'
-        m = x.shape[1] // 2
-        s = x.shape[2] * 2
-
-        # Initialize weights
-        init_fn = nn.initializers.glorot_uniform()
-        gr1 = self.param('gr1', init_fn, (m, s, s))
-        gi1 = self.param('gi1', init_fn, (m, s, s))
-        gr2 = self.param('gr2', init_fn, (m, s, s))
-        gi2 = self.param('gi2', init_fn, (m, s, s))
-        gr3 = self.param('gr3', init_fn, (m, s, s))
-        gi3 = self.param('gi3', init_fn, (m, s, s))
-        gr4 = self.param('gr4', init_fn, (m, s, s))
-        gi4 = self.param('gi4', init_fn, (m, s, s))
-
-        # Reshape and perform operations
-        x = x.reshape((-1, m, s, m, s, 2))
-        x_re, x_im = x[..., 0], x[..., 1]
-
-        y_re_1 = jnp.einsum('...iaj,ajk->...iak', x_re, gr1)
-        y_re_1 = jnp.einsum('abj...i,bjk->abk...i', y_re_1, gr1)
-        y_re_2 = jnp.einsum('...iaj,ajk->...iak', x_re, gi1)
-        y_re_2 = jnp.einsum('abj...i,bjk->abk...i', y_re_2, gi1)
-        y_re_3 = jnp.einsum('...iaj,ajk->...iak', x_im, gi2)
-        y_re_3 = jnp.einsum('abj...i,bjk->abk...i', y_re_3, gr2)
-        y_re_4 = jnp.einsum('...iaj,ajk->...iak', x_im, gr2)
-        y_re_4 = jnp.einsum('abj...i,bjk->abk...i', y_re_4, gi2)
-        y_re = y_re_1+y_re_2+y_re_3+y_re_4
-        
-        y_im_1 = jnp.einsum('...iaj,ajk->...iak', x_im, gr3)
-        y_im_1 = jnp.einsum('abj...i,bjk->abk...i', y_im_1, gr3)
-        y_im_2 = jnp.einsum('...iaj,ajk->...iak', x_im, gi3)
-        y_im_2 = jnp.einsum('abj...i,bjk->abk...i', y_im_2, gi3)
-        y_im_3 = jnp.einsum('...iaj,ajk->...iak', x_re, gi4)
-        y_im_3 = jnp.einsum('abj...i,bjk->abk...i', y_im_3, gr4)
-        y_im_4 = jnp.einsum('...iaj,ajk->...iak', x_re, gr4)
-        y_im_4 = jnp.einsum('abj...i,bjk->abk...i', y_im_4, gi4)
-        y_im = y_im_1+y_im_2+y_im_3+y_im_4
-
-        y = jnp.stack([y_re, y_im], axis=-1)
-
-        # Final reshape and permutation
-        n, r = m * 2, s // 2
-        y = y.reshape((-1, n, r, n, r, 2))
-        y = y.take(self.perm_idx, axis=1).take(self.perm_idx, axis=3)
-
-        return y
-
-class G(nn.Module):
-    L: int
-    l: int
-
-    def setup(self):
-        # Setup is called once to create parameters, we'll store perm_idx here but its creation is static
-        self.perm_idx = build_permutation_indices(self.L, self.l)
+    perm_idx: jnp.ndarray
 
     @nn.compact
     def __call__(self, x):
@@ -316,7 +248,6 @@ class U(nn.Module):
         y_re_3 = jnp.einsum('abj...i,bjk->abk...i', y_re_3, ur3)
         y_re_4 = jnp.einsum('...iaj,ajk->...iak', x_im, ur4)
         y_re_4 = jnp.einsum('abj...i,bjk->abk...i', y_re_4, ui4)
-        y_re = y_re_1+y_re_2+y_re_3+y_re_4
         # Final sum of y_re components
         y_re = y_re_1 + y_re_2 + y_re_3 + y_re_4
 
@@ -335,9 +266,9 @@ class Fstar(nn.Module):
         self.nx = (2**self.L)*self.s
         self.neta = (2**self.L)*self.s
         self.V = V(self.r)
-        self.Hs = [H(self.L, l) for l in range(self.L-1, self.L//2-1, -1)]
+        self.Hs = [H(build_permutation_indices(self.L, l)) for l in range(self.L-1, self.L//2-1, -1)]
         self.Ms = [M() for _ in range(2 * self.NUM_RESNET)]
-        self.Gs = [G(self.L, l) for l in range(self.L//2, self.L)]
+        self.Gs = [G(build_permutation_indices(self.L, l)) for l in range(self.L//2, self.L)]
         self.U = U(self.s)
         self.switch_idx = build_switch_indices(self.L)
 
@@ -349,8 +280,10 @@ class Fstar(nn.Module):
         for h in self.Hs:
             y = h(y)
         y = y.take(self.switch_idx, axis=1).take(self.switch_idx, axis=3)
-        for m in self.Ms:
-            y = m(y) if m is self.Ms[-1] else y + nn.relu(m(y))
+        for m in range(self.NUM_RESNET):
+            y = y + self.Ms[2*m+1](nn.relu(self.Ms[2*m](y)))
+            if not (m+1)==self.NUM_RESNET:
+                y = nn.relu(y)
         for g in self.Gs:
             y = g(y)
         y = self.U(y)
@@ -410,7 +343,7 @@ class CompressedModel(nn.Module):
 
         for conv_layer in self.convs:
             tmp = conv_layer(y)
-            tmp = jax.nn.relu(tmp)
+            tmp = nn.relu(tmp)
             y = jnp.concatenate([y, tmp], axis = -1)
         
         y = self.final_conv(y)
