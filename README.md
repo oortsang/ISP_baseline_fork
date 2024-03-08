@@ -1,7 +1,7 @@
 # Baseline Models for Solving Inverse Scattering Problem
 
 ## Overview
-This repository currently contains four baseline deterministic models for ISP (Image Signal Processing) tasks. The models included are:
+This repository currently contains four baseline deterministic models for solving inverse scattering problem. The models included are:
 
 - **SwitchNet**
 - **Uncompressed Equivariant Model**
