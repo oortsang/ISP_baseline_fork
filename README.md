@@ -1,7 +1,7 @@
-# Baseline Models for Solving Inverse Scattering Problem
+# Baseline Models for Solving the Inverse Scattering Problem
 
 ## Overview
-This repository currently contains four baseline deterministic models for solving inverse scattering problem. The models included are:
+This repository currently contains four baseline deterministic models for solving the wideband inverse scattering problem. The models included are:
 
 - **SwitchNet**
 - **Uncompressed Equivariant Model**
