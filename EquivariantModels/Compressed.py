@@ -286,6 +286,7 @@ class Fstar(nn.Module):
         #        y = nn.relu(y)
         for m in self.Ms:
             y = m(y) if m is self.Ms[-1] else y + nn.relu(m(y))
+            
         for g in self.Gs:
             y = g(y)
         y = self.U(y)

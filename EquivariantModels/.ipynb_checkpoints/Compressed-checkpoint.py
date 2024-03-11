@@ -267,7 +267,7 @@ class Fstar(nn.Module):
         self.neta = (2**self.L)*self.s
         self.V = V(self.r)
         self.Hs = [H(build_permutation_indices(self.L, l)) for l in range(self.L-1, self.L//2-1, -1)]
-        self.Ms = [M() for _ in range(2 * self.NUM_RESNET)]
+        self.Ms = [M() for _ in range(self.NUM_RESNET)]
         self.Gs = [G(build_permutation_indices(self.L, l)) for l in range(self.L//2, self.L)]
         self.U = U(self.s)
         self.switch_idx = build_switch_indices(self.L)
@@ -280,10 +280,12 @@ class Fstar(nn.Module):
         for h in self.Hs:
             y = h(y)
         y = y.take(self.switch_idx, axis=1).take(self.switch_idx, axis=3)
-        for m in range(self.NUM_RESNET):
-            y = y + self.Ms[2*m+1](nn.relu(self.Ms[2*m](y)))
-            if not (m+1)==self.NUM_RESNET:
-                y = nn.relu(y)
+        #for m in range(self.NUM_RESNET):
+        #    y = y + self.Ms[2*m+1](nn.relu(self.Ms[2*m](y)))
+        #    if not (m+1)==self.NUM_RESNET:
+        #        y = nn.relu(y)
+        for m in self.Ms:
+            y = m(y) if m is self.Ms[-1] else y + nn.relu(m(y))
         for g in self.Gs:
             y = g(y)
         y = self.U(y)
@@ -324,14 +326,15 @@ class CompressedModel(nn.Module):
     s: int
     r: int
     NUM_RESNET: int
+    NUM_CONV: int
     cart_mat: jnp.ndarray
     r_index: jnp.ndarray
-
+    
     def setup(self):
         self.fstar_layer0 = Fstar(L=self.L, s=self.s, r=self.r, NUM_RESNET = self.NUM_RESNET, cart_mat=self.cart_mat, r_index=self.r_index)
         self.fstar_layer1 = Fstar(L=self.L, s=self.s, r=self.r, NUM_RESNET = self.NUM_RESNET, cart_mat=self.cart_mat, r_index=self.r_index)
         self.fstar_layer2 = Fstar(L=self.L, s=self.s, r=self.r, NUM_RESNET = self.NUM_RESNET, cart_mat=self.cart_mat, r_index=self.r_index)
-        self.convs = [nn.Conv(features=6, kernel_size=(3, 3), padding='SAME') for _ in range(9)]
+        self.convs = [nn.Conv(features=6, kernel_size=(3, 3), padding='SAME') for _ in range(self.NUM_CONV)]
         self.final_conv = nn.Conv(features=1, kernel_size=(3, 3), padding='SAME')
 
     def __call__(self, inputs):

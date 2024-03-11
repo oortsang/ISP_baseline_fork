@@ -74,6 +74,7 @@ class SwitchNet(nn.Module):
     Nb2x: int
     Nb2y: int
     r: int
+    NUM_CNN: int
 
     def setup(self):
         self.switchnet0 = switchnet(L1=self.L1, L2x=self.L2x, L2y=self.L2y, Nw1=self.Nw1, Nb1=self.Nb1, 
@@ -82,8 +83,8 @@ class SwitchNet(nn.Module):
                       Nw2x=self.Nw2x, Nw2y=self.Nw2y, Nb2x=self.Nb2x, Nb2y=self.Nb2y, r=self.r)
         self.switchnet2 = switchnet(L1=self.L1, L2x=self.L2x, L2y=self.L2y, Nw1=self.Nw1, Nb1=self.Nb1, 
                       Nw2x=self.Nw2x, Nw2y=self.Nw2y, Nb2x=self.Nb2x, Nb2y=self.Nb2y, r=self.r)
-        self.convs = [nn.Conv(features=6, kernel_size=(3, 3), padding='SAME') for _ in range(5)]
-        self.final_conv = nn.Conv(features=2, kernel_size=(3, 3), padding='SAME')
+        self.convs = [nn.Conv(features=self.r*6, kernel_size=(self.Nw2x, self.Nw2x), padding='SAME') for _ in range(self.NUM_CNN-1)]
+        self.final_conv = nn.Conv(features=2, kernel_size=(self.Nw2x, self.Nw2x), padding='SAME')
         self.DMLayer = DMLayer(1)
         
     def __call__(self, inputs):

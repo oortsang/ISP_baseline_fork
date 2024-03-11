@@ -137,13 +137,14 @@ class G(nn.Module):
     def __call__(self, x):
         m = x.shape[-2] // 4
         s = x.shape[-1] * 4
+        t = s * (self.L - self.l + 1) // 3
 
         # Define weights
         init_fn = nn.initializers.glorot_uniform()
-        gr1 = self.param('gr1', init_fn, (m, s, s))
-        gi1 = self.param('gi1', init_fn, (m, s, s))
-        gr2 = self.param('gr2', init_fn, (m, s, s))
-        gi2 = self.param('gi2', init_fn, (m, s, s))        
+        gr1 = self.param('gr1', init_fn, (m, s, t))
+        gi1 = self.param('gi1', init_fn, (m, s, t))
+        gr2 = self.param('gr2', init_fn, (m, s, t))
+        gi2 = self.param('gi2', init_fn, (m, s, t))        
         
         # Reshape operation
         x = x.reshape((-1, 2, m, s))
@@ -161,7 +162,7 @@ class G(nn.Module):
         y = jnp.stack([y_re, y_im], axis=1)
 
         n = m * 4
-        r = s // 4
+        r = t // 4
         y = y.reshape((-1, 2, n, r))
         
         y = y.take(self.perm_idx, axis=-2)
@@ -201,13 +202,14 @@ class WideBNetModel(nn.Module):
     s: int
     r: int
     NUM_RESNET: int
+    NUM_CNN: int
     idx_morton_to_flatten: jnp.ndarray
     
     def setup(self):
         self.nx = (2**self.L)*self.s
         self.switch_idx = build_switch_indices(self.L)
-        self.convs = [nn.Conv(features=6, kernel_size=(3,3), padding='SAME') for _ in range(5)]
-        self.final_conv = nn.Conv(features=1, kernel_size=(3,3), padding='SAME')
+        self.convs = [nn.Conv(features=6, kernel_size=(2,2), padding='SAME') for _ in range(self.NUM_CNN-1)]
+        self.final_conv = nn.Conv(features=1, kernel_size=(2,2), padding='SAME')
         
     @nn.compact
     def __call__(self, inputs):
@@ -227,8 +229,12 @@ class WideBNetModel(nn.Module):
         y = y.take(self.switch_idx, axis=-2)
 
         for m in range(self.NUM_RESNET):
-            y = M()(nn.relu(M()(y))) if m == self.NUM_RESNET - 1 else y + M()(nn.relu(M()(y)))
-            
+            y_tmp = y + M()(nn.relu(M()(y)))
+            y = y + y_tmp
+        
+            if not (m+1)==self.NUM_RESNET:
+                y = nn.relu(y)
+                
         for l in range(self.L//2, self.L):
             y = G(self.L,l)(y)
             
@@ -241,9 +247,8 @@ class WideBNetModel(nn.Module):
         y = jnp.reshape(y, (-1, self.nx, self.nx, 1))
         
         for conv_layer in self.convs:
-            tmp = conv_layer(y)
-            tmp = nn.relu(tmp)
-            y = jnp.concatenate([y, tmp], axis = -1)
+            y = conv_layer(y)
+            y = nn.relu(y)
         
         y = self.final_conv(y)
         
