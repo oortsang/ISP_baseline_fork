@@ -22,6 +22,4 @@ conda install jupyter matplotlib natsort
 Demos for these models can be found in the `colabs` folder.
 
 ## Comments on the uncompressed and compressed rotationally equivariant models
--The two models are sensitive to the order of the source dimension (s) and the receiver dimension (r) in the far-field pattern data. If the models yield very poor results, try training with the perturbation data transposed.
-
 -Using the warmup_cosine_decay_schedule scheduler to train the two models yields much better results (compared to the exponential_decay scheduler used in the TensorFlow codes).
