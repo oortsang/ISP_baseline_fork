@@ -3,10 +3,14 @@
 ## Overview
 This repository currently contains four baseline deterministic models for solving the wideband inverse scattering problem. The models included are:
 
+
 - **SwitchNet**
+- **Wideband Butterfly Network**
 - **Uncompressed Equivariant Model**
 - **Compressed Equivariant Model**
-- **Wideband Butterfly Network**
+
+The latter two models are written by [Borong Zhang](https://borongzhang.github.io/), [Qin Li](https://sites.google.com/view/qinlimadison/home), and [Leonardo Zepeda-Núñez](https://research.google/people/leonardozepedanez/?&type=google).
+
 
 ## Installation
 Project Environment can be installed by 
