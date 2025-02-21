@@ -9,7 +9,7 @@ This repository currently contains four baseline deterministic models for solvin
 - **Uncompressed Equivariant Model**
 - **Compressed Equivariant Model**
 
-The latter two models are written by [Borong Zhang](https://borongzhang.github.io/), [Qin Li](https://sites.google.com/view/qinlimadison/home), and [Leonardo Zepeda-Núñez](https://research.google/people/leonardozepedanez/?&type=google).
+The latter two models are written by [Borong Zhang](https://borongzhang.com/), [Qin Li](https://sites.google.com/view/qinlimadison/home), and [Leonardo Zepeda-Núñez](https://research.google/people/leonardozepedanez/?&type=google).
 
 
 ## Installation
