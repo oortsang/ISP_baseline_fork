@@ -1,15 +1,20 @@
-# Baseline Models for Solving the Inverse Scattering Problem
+# Baseline Models for Solving the Inverse Scattering Problem (Under Construction)
 
 ## Overview
-This repository currently contains four baseline deterministic models for solving the wideband inverse scattering problem. The models included are:
-
+This repository currently contains four baseline deterministic models and the U-ViT diffusion model for solving the wideband inverse scattering problem. The models included are:
 
 - **SwitchNet**
 - **Wideband Butterfly Network**
 - **Uncompressed Equivariant Model**
 - **Compressed Equivariant Model**
+- **U-ViT Diffusion Model**
 
-The latter two models are written by [Borong Zhang](https://borongzhang.com/), [Qin Li](https://sites.google.com/view/qinlimadison/home), and [Leonardo Zepeda-Núñez](https://research.google/people/leonardozepedanez/?&type=google).
+Uncompressed and Compressed Equivariant Models are describe in "..." The authors are [Borong Zhang](https://borongzhang.com/), [Qin Li](https://sites.google.com/view/qinlimadison/home), and [Leonardo Zepeda-Núñez](https://research.google/people/leonardozepedanez/?&type=google).
+
+U-ViT Diffusion Model is implemented by [Martin Guerra](https://sites.google.com/wisc.edu/martinguerra/home). 
+
+## TODO
+Add FWI, least square, Metrics and their credits.
 
 
 ## Installation
