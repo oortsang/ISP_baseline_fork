@@ -1,0 +1,55 @@
+[project]
+name = "ISP_baseline"
+version = "0.1.0"
+description = "Baseline Models for Solving Inverse Scattering Problem"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Borong Zhang, Martin Guerra", email = "borongzhang@yahoo.com, mguerra4@wisc.edu" }
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "License :: OSI Approved :: MIT License",
+  "Intended Audience :: Science/Research"
+]
+keywords = [
+  "diffusion", "machine learning", "jax", "flax", "inverse scattering problem"
+]
+dependencies = [
+  # Install swirl-dynamics from a specific commit.
+  "swirl-dynamics @ git+https://github.com/google-research/swirl-dynamics.git@057c93cebc3c8ccac996bc5a5b49c88e3e39c4b0",
+  "jupyter",
+  "matplotlib",
+  "natsort"
+]
+
+
+[project.urls]
+homepage = "https://github.com/borongzhang/ISP_baseline"
+repository = "https://github.com/borongzhang/ISP_baseline"
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "pytest-xdist",
+  "pylint>=2.6.0",
+  "pyink",
+  "ipykernel"
+]
+
+[tool.pyink]
+line-length = 80
+preview = true
+pyink-indentation = 2
+pyink-use-majority-quotes = true
+
+[build-system]
+requires = ["flit_core >=3.8,<4"]
+build-backend = "flit_core.buildapi"
+
+[tool.flit.sdist]
+exclude = [
+  "**/*_test.py"
+]
