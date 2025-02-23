@@ -44,7 +44,7 @@ def SparsePolarToCartesian(neta, nx):
     
     return sparse.BCOO.fromdense(cart_mat)
     
-    def morton_to_flatten_indices(L, s, b_flatten=True):
+def morton_to_flatten_indices(L, s, b_flatten=True):
     """ Permutes a morton-flattened vector to python-flattened vector,
     e.g.
         >> ind = morton_to_flatten_indices(L, s)
