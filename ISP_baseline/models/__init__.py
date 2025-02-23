@@ -12,35 +12,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Import everything from fstar_cnn.py
-from back_projection_diffusion.src.fstar_cnn import (
-    AdaptiveScale,
-    ConvBlock,
-    FourierEmbedding,
-    MergeChannelCond,
-    InterpConvMerge,
-    FStarNet,
-    PreconditionedDenoiser,
-)
-
-# Import everything from fstars.py
-from back_projection_diffusion.src.fstars import (
-    analytical_fstar,
-    equinet_fstar,
+from models.Compressed import (
+    build_permutation_indices,
+    build_switch_indices,
     V,
     H,
     M,
     G,
     U,
-    b_equinet_fstar,
-    DMLayer,
-    switchnet_fstar,
+    Fstar,
+    CompressedModel,
 )
 
-# Import everything from utils.py
-from back_projection_diffusion.src.utils import (
-    rotationindex,
-    SparsePolarToCartesian,
-    SparseCartesianToPolar,
-    compute_F_adj,
+from models.Uncompressed import Fstar, UncompressedModel
+
+from models.SwitchNetModel import DMLayer, switchnet, SwitchNet
+
+from models.WideBNet import (
+    build_permutation_indices,
+    build_switch_indices,
+    V,
+    H,
+    M,
+    G,
+    U,
+    WideBNetModel,
 )

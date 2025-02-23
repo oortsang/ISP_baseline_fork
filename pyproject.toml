@@ -22,7 +22,9 @@ dependencies = [
   "swirl-dynamics @ git+https://github.com/google-research/swirl-dynamics.git@057c93cebc3c8ccac996bc5a5b49c88e3e39c4b0",
   "jupyter",
   "matplotlib",
-  "natsort"
+  "natsort",
+  "pysteps",
+  "ott-jax==0.4.7"
 ]
 
 
