@@ -6,7 +6,8 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
 authors = [
-  { name = "Borong Zhang, Martin Guerra", email = "borongzhang@yahoo.com, mguerra4@wisc.edu" }
+  { name = "Borong Zhang", email = "borongzhang@yahoo.com" },
+  { name = "Martin Guerra", email = "mguerra4@wisc.edu" }
 ]
 classifiers = [
   "Programming Language :: Python :: 3",
