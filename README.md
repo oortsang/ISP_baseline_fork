@@ -20,11 +20,10 @@ Add FWI, least square, Metrics and their credits.
 ## Installation
 Project Environment can be installed by 
 ```
-conda create -n jax_isp python=3.11 
-conda activate jax_isp
-pip install git+https://github.com/google-research/swirl-dynamics.git@main
+conda create -n isp_baseline python=3.11 
+conda activate isp_baseline
+pip install git+https://github.com/borongzhang/ISP_baseline.git@main
 pip install --upgrade "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-conda install jupyter matplotlib natsort 
 ```
 
 ## Demos
