@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from src.models import DeterministicModel
+from ISP_baseline.src.models import DeterministicModel
 
-from src.trainers import DeterministicTrainer
+from ISP_baseline.src.trainers import DeterministicTrainer
 
-from src.utils import (
+from ISP_baseline.src.utils import (
     rotationindex,
     SparsePolarToCartesian,
     morton_to_flatten_indices,

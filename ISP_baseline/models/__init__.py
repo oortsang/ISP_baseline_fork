@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from models.Compressed import (
+from ISP_baseline.models.Compressed import (
     build_permutation_indices,
     build_switch_indices,
     V,
@@ -24,11 +24,11 @@ from models.Compressed import (
     CompressedModel,
 )
 
-from models.Uncompressed import Fstar, UncompressedModel
+from ISP_baseline.models.Uncompressed import Fstar, UncompressedModel
 
-from models.SwitchNetModel import DMLayer, switchnet, SwitchNet
+from ISP_baseline.models.SwitchNetModel import DMLayer, switchnet, SwitchNet
 
-from models.WideBNet import (
+from ISP_baseline.models.WideBNet import (
     build_permutation_indices,
     build_switch_indices,
     V,
