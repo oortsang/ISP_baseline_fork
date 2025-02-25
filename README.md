@@ -1,4 +1,4 @@
-# Baseline Models for Solving the Inverse Scattering Problem (Under Construction) (TODO: examples, readme, classical methods, metrics)
+# Baseline Models for Solving the Inverse Scattering Problem (Under Construction: will be ready by 02/27/2025) (TODO: examples, readme, classical methods, metrics)
 
 ## Overview
 This repository currently contains four baseline deterministic models and the U-ViT diffusion model for solving the wideband inverse scattering problem. The models included are:
