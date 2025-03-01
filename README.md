@@ -1,4 +1,4 @@
-# Baseline Models for Solving the Inverse Scattering Problem (Under Construction: will be ready by 02/27/2025) 
+# Baseline Models for Solving the Inverse Scattering Problem (Under Construction: will be ready by 02/29/2025) 
 
 ## TODO: examples, readme, classical methods, metrics
 
