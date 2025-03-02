@@ -1,6 +1,4 @@
-# Baseline Models for Solving the Inverse Scattering Problem (Under Construction: will be ready by tonight) 
-
-## TODO: examples, readme, classical methods, metrics
+# Baseline Models for Solving the Inverse Scattering Problem
 
 ## Overview
 This repository currently contains four baseline deterministic models and the U-ViT diffusion model for solving the wideband inverse scattering problem. The models included are:
@@ -11,13 +9,11 @@ This repository currently contains four baseline deterministic models and the U-
 - **Compressed Equivariant Model**
 - **U-ViT Diffusion Model**
 
-Uncompressed and Compressed Equivariant Models are describe in "..." The authors are [Borong Zhang](https://borongzhang.com/), [Qin Li](https://sites.google.com/view/qinlimadison/home), and [Leonardo Zepeda-Núñez](https://research.google/people/leonardozepedanez/?&type=google).
-
+SwitchNet is described in [SWITCHNET: A NEURAL NETWORK MODEL FOR FORWARD AND INVERSE SCATTERING PROBLEMS](https://doi.org/10.1137/18M1222399).
+Wideband Butterfly Network is described in [Wide-band butterfly network: stable and efficient inversion via multi-frequency neural networks](https://doi.org/10.1137/20M1383276).
+Uncompressed and Compressed Equivariant Models are described in [Solving the wide-band inverse scattering problem via equivariant neural networks](https://doi.org/10.1016/j.cam.2024.116050). 
+The deterministic models are implemented by [Borong Zhang](https://borongzhang.com/).
 U-ViT Diffusion Model is implemented by [Martin Guerra](https://sites.google.com/wisc.edu/martinguerra/home). 
-
-## TODO
-Add FWI, least square, Metrics and their credits.
-
 
 ## Installation
 Project Environment can be installed by 
@@ -29,7 +25,4 @@ pip install --upgrade "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-re
 ```
 
 ## Demos
-Demos for these models can be found in the `colabs` folder.
-
-## Comments on the uncompressed and compressed rotationally equivariant models
--Using the warmup_cosine_decay_schedule scheduler to train the two models yields much better results (compared to the exponential_decay scheduler used in the TensorFlow codes).
+Demos for these models can be found in the `examples` folder.
