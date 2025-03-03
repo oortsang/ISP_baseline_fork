@@ -5,8 +5,8 @@ This repository contains four baseline deterministic models and the U-ViT diffus
 
 - **SwitchNet**
 - **Wideband Butterfly Network**
-- **Uncompressed Equivariant Model**
-- **Compressed Equivariant Model**
+- **Uncompressed Equivariant Model (EquiNet)**
+- **Compressed Equivariant Model (B-EquiNet)**
 - **U-ViT Diffusion Model**
 
 SwitchNet is described in [SwitchNet: a neural network model for forward and inverse scattering problems](https://doi.org/10.1137/18M1222399).
