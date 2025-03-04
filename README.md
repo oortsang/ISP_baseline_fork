@@ -1,4 +1,4 @@
-# Baseline Models for Solving the Inverse Scattering Problem (Under construction: This module will be made PEP8 compliant by March 7th.)
+# Baseline Models for Solving the Inverse Scattering Problem (Under construction: code will be made PEP8 compliant by March 7th.)
 
 ## Overview
 This repository contains four baseline deterministic models and the U-ViT diffusion model for solving the wideband inverse scattering problem. The included models are:
