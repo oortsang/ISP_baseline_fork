@@ -1,4 +1,4 @@
-# Baseline Models for Solving the Inverse Scattering Problem (Under construction: code will be made PEP8 compliant later.)
+# Baseline Models for Solving the Inverse Scattering Problem  
 
 ## Overview
 This repository contains four baseline deterministic models and the U-ViT diffusion model for solving the wideband inverse scattering problem. The included models are:
@@ -24,7 +24,7 @@ Project Environment can be installed by
 conda create -n isp_baseline python=3.11 
 conda activate isp_baseline
 pip install git+https://github.com/borongzhang/ISP_baseline.git@main
-pip install --upgrade "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+pip install --upgrade "jax[cuda12]==0.5.0"
 ```
 
 ## Demos
