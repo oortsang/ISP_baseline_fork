@@ -109,19 +109,3 @@ def morton_reshape(x, L, s):
 
         return np.vstack((tmp1, tmp2))
 
-if __name__=='__main__':
-
-    L = 3
-    s = 2
-    sz = (2**L)*s
-#     Y = np.random.randn(sz, sz)
-#     print(morton_reshape(morton_flatten(Y,L,s),L,s)-Y)
-
-    # given a morton flattened array
-    Xin = np.random.randn(sz, sz)
-    X_morton = morton_flatten(Xin, L, s)
-
-    ind = morton_to_flatten_indices(L,s)[:]
-    print(X_morton[ind].reshape(sz,sz)-Xin)
-
-
