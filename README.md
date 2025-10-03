@@ -1,35 +1,16 @@
-# Baseline Models for Solving the Inverse Scattering Problem  
+# Baseline Models for Solving the Inverse Scattering Problem
 
 ## Overview
-This repository contains four baseline deterministic models and the U-ViT diffusion model for solving the wideband inverse scattering problem. The included models are:
+This is a fork of [the ISP_baselines repository](https://github.com/borongzhang/ISP_baseline) developed by Borong Zhang and Martin Guerra, adapted for use with MFISNet-like datasets.
+The repository is developed in JAX and includes four deterministic models as baselines, along with a U-ViT diffusion model for the multifrequency inverse scattering problem:
 
-- **SwitchNet**
-- **Wideband Butterfly Network**
-- **Uncompressed Equivariant Model (EquiNet)**
-- **Compressed Equivariant Model (B-EquiNet)**
-- **U-ViT Diffusion Model**
+- **SwitchNet** [(link to the paper)](https://doi.org/10.1137/18M1222399)
+- **Wideband Butterfly Network** [(link to the paper)](https://doi.org/10.1137/20M1383276)
+- **Uncompressed Equivariant Model (EquiNet)** [(link to the paper)](https://doi.org/10.1016/j.cam.2024.116050)
+- **Compressed Equivariant Model (B-EquiNet)** [(link to the paper)](https://doi.org/10.1016/j.cam.2024.116050)
+- **U-ViT Diffusion Model** [(link to the paper)](https://doi.org/10.1016/j.cam.2024.116050)
 
-SwitchNet is described in [SwitchNet: a neural network model for forward and inverse scattering problems](https://doi.org/10.1137/18M1222399).
+From the original repo: "The deterministic models were implemented by [Borong Zhang](https://borongzhang.com/) using code provided by the original authors and the [Swirl-Dynamics repository](https://github.com/google-research/swirl-dynamics), while the U-ViT Diffusion Model was implemented by [Martin Guerra](https://sites.google.com/wisc.edu/martinguerra/home) based on the [Swirl-Dynamics probabilistic diffusion project](https://github.com/google-research/swirl-dynamics/tree/main/swirl_dynamics/projects/probabilistic_diffusion)."
 
-Wideband Butterfly Network is detailed in [Wide-band butterfly network: stable and efficient inversion via multi-frequency neural networks](https://doi.org/10.1137/20M1383276).
-
-The Uncompressed and Compressed Equivariant Models are explained in [Solving the wide-band inverse scattering problem via equivariant neural networks](https://doi.org/10.1016/j.cam.2024.116050).
-
-The deterministic models were implemented by [Borong Zhang](https://borongzhang.com/) using code provided by the original authors and the [Swirl-Dynamics repository](https://github.com/google-research/swirl-dynamics), while the U-ViT Diffusion Model was implemented by [Martin Guerra](https://sites.google.com/wisc.edu/martinguerra/home) based on the [Swirl-Dynamics probabilistic diffusion project](https://github.com/google-research/swirl-dynamics/tree/main/swirl_dynamics/projects/probabilistic_diffusion).
-
-
-## Installation
-Project Environment can be installed by 
-```
-conda create -n isp_baseline python=3.11 
-conda activate isp_baseline
-pip install git+https://github.com/borongzhang/ISP_baseline.git@main
-pip install --upgrade "jax[cuda12]==0.5.0"
-```
-
-## Demos
-Demos for these models can be found in the `examples` folder.
-
-## Datasets
-We have made the datasets and the data generation scripts publicly available in the [repository](https://github.com/borongzhang/back_projection_diffusion).
-
+### Adaptations
+We add additional code to handle our dataset. Any other modifications are minimal. (I may also modify the environment information for packages/dependencies.)
