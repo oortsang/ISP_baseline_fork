@@ -117,3 +117,75 @@ class UncompressedModel(nn.Module):
         y = self.final_conv(y)
 
         return y[:, :, :, 0]
+
+### (OOT, 2025-10-06) Below this, I've introduced an alternate interface
+# that I hope is a bit more flexible (i.e., set number of frequencies and hyperparameters)
+
+
+# # Discretization of Omega (n_eta * n_eta).
+# neta = (2**L)*s
+
+# # Number of sources/detectors (n_sc).
+# # Discretization of the domain of alpha in polar coordinates (n_theta * n_rho).
+# # For simplicity, these values are set equal (n_sc = n_theta = n_rho), facilitating computation.
+# nx = (2**L)*s
+
+
+class UncompressedModelFlexible(nn.Module):
+    """Modified interface of the Uncompressed model to accept more frequencies and
+    more control over the hyperparameter choices
+    """
+    nx: int     # number of source/receivers; we usually say N_r or N_s
+    neta: int   # number of gridpoints for the scatterint potentials; our code uses N_x for this
+    cart_mat: jnp.ndarray
+    r_index: np.ndarray
+
+    # New parameters
+    nk: int = 3 # number of frequencies; this is new
+    # Architecture
+    N_cnn_layers: int = 3
+    N_cnn_channels: int = 6
+    kernel_size: int = 3
+
+    def setup(self):
+        # Do I need to register these things with Jax for proper functioning?
+        self.fstar_layers = [
+            Fstar(nx=self.nx, neta=self.neta, cart_mat=self.cart_mat, r_index=self.r_index)
+            for i in range(self.nk)
+        ]
+        kernel_shape_2d = (self.kernel_size, self.kernel_size)
+        self.convs = [
+            nn.Conv(features=self.N_cnn_channels, kernel_size=kernel_shape_2d, padding='SAME')
+            for _ in range(self.N_cnn_layers * self.nk) # ???
+        ]
+        self.final_conv = nn.Conv(features=1, kernel_size=kernel_shape_2d, padding='SAME')
+
+        # self.fstar_layer0 = Fstar(nx=self.nx, neta=self.neta, cart_mat=self.cart_mat, r_index=self.r_index)
+        # self.fstar_layer1 = Fstar(nx=self.nx, neta=self.neta, cart_mat=self.cart_mat, r_index=self.r_index)
+        # self.fstar_layer2 = Fstar(nx=self.nx, neta=self.neta, cart_mat=self.cart_mat, r_index=self.r_index)
+        # self.convs = [nn.Conv(features=6, kernel_size=(3, 3), padding='SAME') for _ in range(9)]
+        # self.final_conv = nn.Conv(features=1, kernel_size=(3, 3), padding='SAME')
+
+    
+    def __call__(self, inputs):
+        """
+        Args:
+            inputs (jnp.ndarray): Input tensor with at least 4 dimensions, where the last dimension represents different channels.
+        Returns:
+            jnp.ndarray: Output tensor after processing through Fstar layers and convolutional layers, with the final channel squeezed.
+        """
+        y = jnp.concatenate(
+            [
+                self.fstar_layers[i](inputs[:, :, :, i])
+                for i in range(self.nk)
+            ],
+            axis=-1,
+        )
+        for conv_layer in self.convs:
+            tmp = conv_layer(y)
+            tmp = jax.nn.relu(tmp)
+            y = jnp.concatenate([y, tmp], axis=-1)
+        
+        y = self.final_conv(y)
+        return y[:, :, :, 0]
+        

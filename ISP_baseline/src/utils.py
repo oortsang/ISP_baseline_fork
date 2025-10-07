@@ -3,19 +3,23 @@ import jax.numpy as jnp
 from jax.experimental import sparse
 from scipy.ndimage import geometric_transform
 
+# from jax.experimental.sparse.bcoo import BCOO
+from typing import Tuple
+import os
+
 def rotationindex(n):
     index = jnp.reshape(jnp.arange(0, n**2, 1), [n, n])
     return jnp.concatenate([jnp.roll(index, shift=[-i,-i], axis=[0,1]) for i in range(n)], 0)
-    
+
 def SparsePolarToCartesian(neta, nx):
-    
+
     def CartesianToPolar(coords):
         """
         Transforms coordinates from Cartesian to polar coordinates with custom scaling.
-    
+
         Parameters:
         - coords: A tuple or list containing the (i, j) coordinates to be transformed.
-    
+
         Returns:
         - A tuple (rho, theta) representing the transformed coordinates.
         """
@@ -37,13 +41,13 @@ def SparsePolarToCartesian(neta, nx):
             pad_dummy = np.pad(mat_dummy, ((0, 0), (neta // 2, neta // 2)), 'edge')
             # Apply the geometric transformation to map the dummy matrix to polar coordinates
             cart_mat[:, i, j] = geometric_transform(pad_dummy, CartesianToPolar, output_shape=[neta, neta], mode='grid-wrap').flatten()
-    
+
     cart_mat = np.reshape(cart_mat, (neta**2, nx**2))
     # Removing small values
     cart_mat = np.where(np.abs(cart_mat) > 0.001, cart_mat, 0)
-    
+
     return sparse.BCOO.fromdense(cart_mat)
-    
+
 def morton_to_flatten_indices(L, s, b_flatten=True):
     """ Permutes a morton-flattened vector to python-flattened vector,
     e.g.
@@ -77,7 +81,7 @@ def flatten_to_morton_indices(L, s):
     return morton_flatten(X, L, s)
 
 def morton_flatten(x, L, s):
-    """ Flatten via Z-ordering a (2^L)s by (2^L)s dimensional matrix. 
+    """ Flatten via Z-ordering a (2^L)s by (2^L)s dimensional matrix.
     """
     assert x.shape[0] == (2**L)*s
     assert x.shape[1] == (2**L)*s
@@ -109,3 +113,88 @@ def morton_reshape(x, L, s):
 
         return np.vstack((tmp1, tmp2))
 
+### Additional helper functions ###
+# Manage the cart_mat and r_index objects so we can just save them to disk
+# for easier testing
+def save_mats_to_fp(
+    cart_mat: sparse.bcoo.BCOO,
+    r_index: jnp.ndarray,
+    mats_fp: str,
+):
+    """Save matrices to a specific file path; saves as dense matrices for easiest compatibility"""
+    os.makedirs(os.path.split(mats_fp)[0], exist_ok=True)
+    # # old version, which used dense representations
+    # np.savez(mats_fp, cart_mat=np.array(cart_mat.todense()), r_index=np.array(r_index))
+    cart_mat_data = cart_mat.data
+    cart_mat_idcs = cart_mat.indices
+    np.savez(
+        mats_fp,
+        cart_mat_data=cart_mat_data,
+        cart_mat_idcs=cart_mat_idcs,
+        cart_mat_shape=cart_mat.shape,
+        r_index=np.array(r_index),
+    )
+
+def load_mats_from_fp(
+    mats_fp: str,
+) -> Tuple[sparse.bcoo.BCOO, jnp.ndarray]:
+    """Load matrices from a specific file path; raises an error if the file does not exist"""
+    mats_dd = np.load(mats_fp)
+    cart_mat_data  = mats_dd["cart_mat_data"]
+    cart_mat_idcs  = mats_dd["cart_mat_idcs"]
+    cart_mat_shape = tuple(mats_dd["cart_mat_shape"])
+    r_index_np     = mats_dd["r_index"]
+    # print(f"Loaded matrices from the file!")
+
+    cart_mat = sparse.bcoo.BCOO((cart_mat_data, cart_mat_idcs), shape=cart_mat_shape)
+    r_index  = jnp.array(r_index_np)
+    return cart_mat, r_index
+
+def _get_mats_fp(
+    neta: int,
+    nx: int,
+    mats_dir: str=None,
+    mats_format: str=None,
+) -> str:
+    """Gets the matrices' filepath from basic information"""
+    mats_format = mats_format if mats_format is not None else "mats_neta{0}_nx{1}.npz"
+    mats_fp = os.path.join(mats_dir, mats_format.format(neta,nx)) if mats_dir is not None else None
+    return mats_fp
+
+def save_mats(
+    neta: int,
+    nx: int,
+    mats_dir: str=None,
+    mats_format: str=None,
+):
+    """Save matrices to disk, wrapper that handles file naming
+    """
+    mats_fp = _get_mats_fp(neta, nx, mats_dir, mats_format)
+    save_mats_to_fp(cart_mat, r_index, mats_fp)
+
+def load_or_create_mats(
+    neta: int,
+    nx: int,
+    mats_dir: str=None,
+    mats_format: str=None,
+    save_if_created: bool=False,
+) -> Tuple[sparse.bcoo.BCOO, jnp.ndarray]:
+    """Loads the matrices if possible, otherwise creates new ones"""
+    mats_fp = _get_mats_fp(neta, nx, mats_dir, mats_format)
+
+    loaded_mats = False
+    if mats_fp is not None or not os.path.exists(mats_fp):
+        try:
+            cart_mat, r_index = load_mats_from_fp(mats_fp)
+            loaded_mats = True
+        except:
+            pass
+    if not loaded_mats:
+        cart_mat = SparsePolarToCartesian(neta, nx)
+        r_index  = rotationindex(nx)
+
+        # Save to disk if we just created new matrices
+        if save_if_created:
+            save_mats_to_fp(cart_mat, r_index, mats_fp)
+
+    return cart_mat, r_index
