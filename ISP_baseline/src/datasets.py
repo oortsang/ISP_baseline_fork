@@ -31,29 +31,73 @@ def apply_blur_to_q(
     ).astype('float32')
     return q_blurred
 
-def d_rs_to_scatter(d_rs: np.ndarray) -> np.ndarray:
-    """Sends the d_rs object to the scattered wave array, scatter"""
+def d_rs_to_scatter(
+    d_rs: np.ndarray,
+    as_real: bool=True,
+    downsample_ratio: int = 1,
+) -> np.ndarray:
+    """Sends the d_rs object to the scattered wave array, scatter
+    If as_real is set to True, then the real/imag components are placed
+    into different channels along a new second axis
+    """
     scatter = d_rs.transpose(0, 3, 2, 1)
+    # Do I need to flip 2 and 3? Should it be like this:
+    # scatter = d_rs.transpose(0, 2, 3, 1)
+    dsr = downsample_ratio
+    scatter = scatter[:, ::dsr, ::dsr, :]
+
+    s_shape = scatter.shape
+    scatter = scatter.reshape(
+        s_shape[0],
+        s_shape[1]*s_shape[2],
+        s_shape[3],
+    )
+    if as_real:
+        scatter = np.stack(
+            [scatter.real, scatter.imag],
+            axis=1,
+        )
     return scatter
 
-def q_cart_to_eta(q_cart: np.ndarray, blur_sigma: float=0.5) -> np.ndarray:
+def q_cart_to_eta(
+    q_cart: np.ndarray,
+    blur_sigma: float=0.5,
+    downsample_ratio: int = 1,
+) -> np.ndarray:
     """Sends q_cart to eta, and for simplicity also apply blurring here"""
     q_blurred = apply_blur_to_q(q_cart, blur_sigma=blur_sigma)
-    eta = q_blurred # is it this simple?
+    ds_slice = np.s_[..., ::downsample_ratio, ::downsample_ratio]
+    eta = q_blurred[ds_slice] # is it this simple?
     return eta
 
-def convert_mfisnet_data_dict(mfisnet_dd: dict, blur_sigma: float=0.5) -> dict:
+def convert_mfisnet_data_dict(
+    mfisnet_dd: dict,
+    blur_sigma: float=0.5,
+    scatter_as_real: bool=True,
+    downsample_ratio: int=1,
+) -> dict:
     """Converts a mfisnet-style data dictionary for use with
     the wide-band equivariant network models
     """
     q_cart = mfisnet_dd["q_cart"]
     d_rs   = mfisnet_dd["d_rs"]
+    eta = q_cart_to_eta(
+        q_cart,
+        blur_sigma=blur_sigma,
+        downsample_ratio=downsample_ratio
+    )
+    scatter = d_rs_to_scatter(
+        d_rs,
+        as_real=scatter_as_real,
+        downsample_ratio=downsample_ratio
+    )
+    nx = d_rs.shape[-2] // downsample_ratio
 
     wb_dd = {
-        "eta": q_cart_to_eta(q_cart, blur_sigma=blur_sigma),
-        "scatter": d_rs_to_scatter(d_rs),
-        "neta": q_cart.shape[-1],
-        "nx": d_rs.shape[-1],
+        "eta":     eta,
+        "scatter": scatter,
+        "neta":    eta.shape[-1],
+        "nx":      nx,
     }
     return wb_dd
 
@@ -61,6 +105,7 @@ def setup_tf_dataset(
     eta: np.ndarray,
     scatter: np.ndarray,
     batch_size: int=16,
+    repeats: bool=False,
 ) -> tf.data.Dataset:
     """Sets up the tensorflow-type dataset
     Assumes data_dd is the type used for wide-band equivariant models
@@ -74,7 +119,8 @@ def setup_tf_dataset(
     }
 
     dataset = tf.data.Dataset.from_tensor_slices(data_obj)
-    dataset = dataset.repeat()
+    if repeats:
+        dataset = dataset.repeat()
     dataset = dataset.batch(batch_size)
     dataset = dataset.prefetch(tf.data.AUTOTUNE)
     dataloader = dataset.as_numpy_iterator()

@@ -29,12 +29,13 @@ class DeterministicTrainer(trainers.BasicTrainer[DeterministicModel, TrainState]
     eval_rrmse_mean: clu_metrics.Average.from_output("rrmse")
     eval_rrmse_std: clu_metrics.Std.from_output("rrmse")
 
+    # (OOT, 2025-10-08 adding relative l2 error)
+    eval_rel_l2_mean: clu_metrics.Average.from_output("rel_l2")
+    eval_rel_l2_std: clu_metrics.Std.from_output("rel_l2")
+
   @staticmethod
   def build_inference_fn(
       state: TrainState, core: nn.Module
   ) -> Callable[[ArrayLike], Array]:
     """Builds an encoder inference function from a train state."""
     return DeterministicModel.inference_fn(state.model_variables, core)
-
-
-      

@@ -14,6 +14,8 @@ from swirl_dynamics.templates import trainers
 from swirl_dynamics.templates import train_states
 from swirl_dynamics.lib import metrics
 
+from .more_metrics import l2_error
+
 Array = jax.Array
 CondDict = Mapping[str, Array]
 Metrics = clu_metrics.Collection
@@ -26,7 +28,7 @@ class DeterministicModel(models.BaseModel):
 
   input_shape: tuple[int, ...]
   core_module: nn.Module
-  
+
   def initialize(self, rng: Array):
     # TODO: Add a dtype object to ensure consistency of types.
     x = jnp.ones((1,) + self.input_shape)
@@ -39,9 +41,9 @@ class DeterministicModel(models.BaseModel):
       rng: Array,
       mutables: models.PyTree,
   ) -> models.LossAndAux:
-    
+
     y = self.core_module.apply({'params': params}, batch["scatter"])
-    
+
     loss = jnp.mean(jnp.square(y - batch["eta"]))
     metric = dict(loss=loss)
     return loss, (metric, mutables)
@@ -52,7 +54,7 @@ class DeterministicModel(models.BaseModel):
       batch: models.BatchType,
       rng: Array,
   ) -> models.ArrayDict:
-    
+
     x = batch['scatter']
     core = self.inference_fn(variables, self.core_module)
     y = core(x)
@@ -62,19 +64,29 @@ class DeterministicModel(models.BaseModel):
         relative=True,
         squared=False,
     )
-
-    return dict(rrmse=rrmse(pred=y, true=batch['eta']))
+    # (OOT, 2025-10-08 adding relative l2 error)
+    rel_l2 = functools.partial(
+        l2_error,
+        l2_axes=(-1, -2),
+        relative=True,
+        squared=False,
+    )
+    true_eta = batch['eta']
+    eval_dict = {
+      'rrmse':  rrmse(pred=y,  true=true_eta),
+      'rel_l2': rel_l2(pred=y, true=true_eta),
+    }
+    # return dict(rrmse=rrmse(pred=y, true=batch['eta']))
+    return eval_dict
 
   @staticmethod
   def inference_fn(variables: models.PyTree, core_module: nn.Module):
 
     def _core(
-        x: Array 
+        x: Array
     ) -> Array:
       return core_module.apply(
           variables, x
       )
 
     return _core
-
-
