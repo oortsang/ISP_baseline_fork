@@ -81,9 +81,11 @@ class Fstar(nn.Module):
             x = self.cart_mat @ x
             return jnp.reshape(x, (self.neta, self.neta, 1))
 
-        # (OOT, 2025-10-09) Can we un-vectorize it to reduce VRAM usage?
-        # return jnp.stack([polar_to_cart(output_i) for output_i in output_polar], axis=0)
         return jax.vmap(polar_to_cart)(output_polar)
+
+        # (OOT, 2025-10-09) Can we un-vectorize it to reduce VRAM usage?
+        # No, that doesn't seem to do anything
+        # return jnp.stack([polar_to_cart(output_i) for output_i in output_polar], axis=0)
 
 
 class UncompressedModel(nn.Module):
@@ -121,10 +123,6 @@ class UncompressedModel(nn.Module):
 
         return y[:, :, :, 0]
 
-### (OOT, 2025-10-06) Below this, I've introduced an alternate interface
-# that I hope is a bit more flexible (i.e., set number of frequencies and hyperparameters)
-
-
 # # Discretization of Omega (n_eta * n_eta).
 # neta = (2**L)*s
 
@@ -133,6 +131,10 @@ class UncompressedModel(nn.Module):
 # # For simplicity, these values are set equal (n_sc = n_theta = n_rho), facilitating computation.
 # nx = (2**L)*s
 
+
+
+### (OOT, 2025-10-06) Below this, I've introduced an alternate interface
+# that I hope is a bit more flexible (i.e., set number of frequencies and hyperparameters)
 
 class UncompressedModelFlexible(nn.Module):
     """Modified interface of the Uncompressed model to accept more frequencies and
