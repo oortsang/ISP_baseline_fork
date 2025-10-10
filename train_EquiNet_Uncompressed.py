@@ -1,8 +1,9 @@
 import functools
 import os
+import sys
 import time
 
-os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.99"
+os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.50"
 os.environ["JAX_TRACEBACK_FILTERING"] = "off"
 import numpy as np
 import jax
@@ -12,6 +13,9 @@ import matplotlib.pyplot as plt
 from clu import metric_writers
 import optax
 import orbax.checkpoint as ocp
+
+jax_device = jax.devices("gpu")[0]
+jax.config.update("jax_default_device", jax_device)
 
 import argparse
 import h5py
@@ -42,9 +46,11 @@ from ISP_baseline.src.more_metrics import (
     l2_error
 )
 
+# Set up logging...
 import logging
 FMT = "%(asctime)s:MFISNets: %(levelname)s - %(message)s"
 TIMEFMT = "%Y-%m-%d %H:%M:%S"
+
 
 def setup_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -199,6 +205,8 @@ def main(
     NTEST  = args.truncate_num_test
     # NVAL   = args.truncate_num_val
     # NTEST  = args.truncate_num_test
+    vram_msg = utils.get_memory_info_jax(jax_device, print_msg=False)
+    print(f"Before loading data: {vram_msg}")
 
     # Load the dataset
     train_dirs = get_multifreq_dset_dirs(
@@ -284,6 +292,10 @@ def main(
         "N_cnn_channels": N_cnn_channels,
         "kernel_size": kernel_size,
     }
+    # print(f"cart_mat type: {type(cart_mat)}")
+    # vram_msg = utils.get_memory_info_jax(jax_device, print_msg=False)
+    # print(f"After loading: {vram_msg}")
+
     core_module = Uncompressed.UncompressedModelFlexible(
         nx = nx,
         neta = neta,
@@ -332,37 +344,48 @@ def main(
             ),
         ),
     )
+    # get_memory_info_jax
+    vram_msg = utils.get_memory_info_jax(jax_device, print_msg=False)
+    print(f"Before training: {vram_msg}")
+
     # print(f"trainer has: {trainer.__dir__()}")
     # import pdb; pdb.set_trace()
     # eval_dloader = train_dloader
     # val_dloader = train_dloader
-    templates.run_train(
-        train_dataloader=train_dloader,
-        trainer=trainer,
-        workdir=workdir,
-        total_train_steps=num_train_steps,
-        metric_writer=metric_writers.create_default_writer(
-            workdir, asynchronous=False
-        ),
-        metric_aggregation_steps=10,
-        eval_dataloader=val_dloader_looped,
-        eval_every_steps = 100,
-        num_batches_per_eval = 1,
-        callbacks=(
-            templates.TqdmProgressBar(
-                total_train_steps=num_train_steps,
-                train_monitors=("train_loss",),
-                eval_monitors=("eval_rel_l2_mean",),
-                # eval_monitors=("eval_rrmse_mean",),
+    try:
+        templates.run_train(
+            train_dataloader=train_dloader,
+            trainer=trainer,
+            workdir=workdir,
+            total_train_steps=num_train_steps,
+            metric_writer=metric_writers.create_default_writer(
+                workdir, asynchronous=False
             ),
-            templates.TrainStateCheckpoint(
-                base_dir=workdir,
-                options=ocp.CheckpointManagerOptions(
-                    save_interval_steps=ckpt_interval, max_to_keep=max_ckpt_to_keep
+            metric_aggregation_steps=10,
+            eval_dataloader=val_dloader_looped,
+            eval_every_steps = 100,
+            num_batches_per_eval = 1,
+            callbacks=(
+                templates.TqdmProgressBar(
+                    total_train_steps=num_train_steps,
+                    train_monitors=("train_loss",),
+                    eval_monitors=("eval_rel_l2_mean",),
+                    # eval_monitors=("eval_rrmse_mean",),
+                ),
+                templates.TrainStateCheckpoint(
+                    base_dir=workdir,
+                    options=ocp.CheckpointManagerOptions(
+                        save_interval_steps=ckpt_interval, max_to_keep=max_ckpt_to_keep
+                    ),
                 ),
             ),
-        ),
-    )
+        )
+    except Exception as e:
+        logging.error(f"Exception: {e}")
+        vram_msg = utils.get_memory_info_jax(jax_device, print_msg=False)
+        print(f"{vram_msg}")
+
+        sys.exit(1)
     trained_state = trainers.TrainState.restore_from_orbax_ckpt(
         f"{workdir}/checkpoints", step=None
     )
@@ -436,7 +459,7 @@ def main(
     val_errors_rrmse  = np.array(val_errors_rrmse)
     val_errors_rel_l2 = np.concatenate(val_errors_rel_l2, axis=0)
     val_errors_rapsd  = np.concatenate(val_errors_rapsd, axis=0)
-            
+
     val_rel_l2_mean = np.mean(val_errors_rel_l2)
     val_rrmse_mean  = np.mean(val_errors_rrmse)
     print(f"Mean rel l2 error: {val_rel_l2_mean*100:.3f}%")
@@ -453,6 +476,21 @@ if __name__ == "__main__":
         logging.basicConfig(format=FMT, datefmt=TIMEFMT, level=logging.DEBUG)
     else:
         logging.basicConfig(format=FMT, datefmt=TIMEFMT, level=logging.INFO)
+
+    # # Somehow this double-prints the log entries
+    # root  = logging.getLogger()
+    # handler = logging.StreamHandler(sys.stderr)
+    # if a.debug:
+    #     handler.level = logging.DEBUG
+    #     root.setLevel(logging.DEBUG)
+    # else:
+    #     handler.level = logging.WARNING
+    #     root.setLevel(logging.WARNING)
+
+    # formatter = logging.Formatter(FMT, datefmt=TIMEFMT)
+    # handler.setFormatter(formatter)
+    # root.addHandler(handler)
+
 
     logging.info(f"Received the following arguments: {a}")
     main(a, return_model=False)
