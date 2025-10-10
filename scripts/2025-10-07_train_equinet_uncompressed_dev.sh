@@ -6,10 +6,10 @@ echo "Please ensure the jaxisp-v3 environment is active before running this scri
 
 python train_EquiNet_Uncompressed.py \
 --ref_data_dir_base $dataset_dir \
---data_input_nus 1 5 10 \
+--data_input_nus 2 5 10 \
 --neta 192 \
 --nx 192 \
---downsample_ratio 2 \
+--downsample_ratio 1 \
 --blur_sigma 0.5 \
 --truncate_num_train 1000 \
 --truncate_num_val 100 \
@@ -18,7 +18,7 @@ python train_EquiNet_Uncompressed.py \
 --n_cnn_channels_2d 6 \
 --kernel_size_2d 5 \
 --n_epochs 100 \
---batch_size 16 \
+--batch_size 1 \
 --log_batch_size 1 \
 --output_pred_shard_size 1000 \
 --output_pred_dir tmp/2025-10-07_output_pred_placeholder \

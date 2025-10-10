@@ -433,6 +433,13 @@ def main(
                 /rapsd(true[i],fft_method=np.fft)
             )))
 
+    print(f"val_errors_rel_l2 type: {type(val_errors_rel_l2)}")
+
+    # val_errors_rrmse  = np.concatenate(val_errors_rrmse, axis=0)
+    val_errors_rrmse  = np.array(val_errors_rrmse)
+    val_errors_rel_l2 = np.concatenate(val_errors_rel_l2, axis=0)
+    val_errors_rapsd  = np.concatenate(val_errors_rapsd, axis=0)
+            
     val_rel_l2_mean = np.mean(val_errors_rel_l2)
     val_rrmse_mean  = np.mean(val_errors_rrmse)
     print(f"Mean rel l2 error: {val_rel_l2_mean*100:.3f}%")

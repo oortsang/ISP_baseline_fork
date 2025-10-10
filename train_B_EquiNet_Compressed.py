@@ -451,11 +451,21 @@ def main(
                 /rapsd(true[i],fft_method=np.fft)
             )))
 
+    # val_rel_l2_mean = np.mean(val_errors_rel_l2)
+    # val_rrmse_mean  = np.mean(val_errors_rrmse)
+    # print(f"Mean rel l2 error: {val_rel_l2_mean*100:.3f}%")
+    # print('Relative root-mean-square error = %.3f' % (val_rrmse_mean*100), '%')
+    # print('Mean energy log ratio = %.3f' % np.mean(val_errors_rapsd))
+    val_errors_rrmse  = np.array(val_errors_rrmse)
+    val_errors_rel_l2 = np.concatenate(val_errors_rel_l2, axis=0)
+    val_errors_rapsd  = np.concatenate(val_errors_rapsd, axis=0)
+            
     val_rel_l2_mean = np.mean(val_errors_rel_l2)
     val_rrmse_mean  = np.mean(val_errors_rrmse)
     print(f"Mean rel l2 error: {val_rel_l2_mean*100:.3f}%")
     print('Relative root-mean-square error = %.3f' % (val_rrmse_mean*100), '%')
     print('Mean energy log ratio = %.3f' % np.mean(val_errors_rapsd))
+
 
 if __name__ == "__main__":
     a = setup_args()
