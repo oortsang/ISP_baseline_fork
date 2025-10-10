@@ -3,7 +3,7 @@ import os
 import sys
 import time
 
-os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.50"
+os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.80"
 os.environ["JAX_TRACEBACK_FILTERING"] = "off"
 import numpy as np
 import jax
@@ -45,6 +45,9 @@ from ISP_baseline.src.datasets import (
 from ISP_baseline.src.more_metrics import (
     l2_error
 )
+
+tf.config.set_visible_devices([], device_type='GPU')
+
 
 # Set up logging...
 import logging
