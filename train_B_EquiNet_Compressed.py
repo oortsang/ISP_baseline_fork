@@ -3,7 +3,7 @@ import sys
 import os
 import time
 
-os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.8"
+os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.9"
 os.environ["JAX_TRACEBACK_FILTERING"] = "off"
 import numpy as np
 import jax
@@ -530,16 +530,25 @@ def main(
     # print('Mean energy log ratio = %.3f' % np.mean(val_errors_rapsd))
 
     x_vals = train_mfisnet_dd["x_vals"]
-    loss_fn_dict = get_loss_fns(["rrmse", "rel_l2"])
+    loss_fn_dict = get_loss_fns(["rrmse", "rel_l2", "psnr"])
     dset_name_list = ["train", "val", "test"]
-    dataset_list = [train_dataset, val_dataset, test_dataset]
+    # dataset_list = [train_dataset, val_dataset, test_dataset]
+    dataset_list = [
+        (train_scatter, train_eta),
+        (val_scatter,   val_eta),
+        (test_scatter,  test_eta),
+    ]
     for i, dset in enumerate(dset_name_list):
-        dataset = dataset_list[i]
-        # args.log_batch_size
+        # dataset = dataset_list[i]
+        dset_scatter, dset_eta = dataset_list[i]
+        print(f"{dset}_scatter shape: {dset_scatter.shape}")
+        print(f"{dset}_eta shape:     {dset_eta.shape}")
         dset_preds, dset_loss_vals = eval_model(
             trained_state,
             core_module,
-            dataset,
+            # dataset,
+            dset_scatter=dset_scatter,
+            dset_eta=dset_eta,
             eval_batch_size=args.log_batch_size,
             loss_fn_dict=loss_fn_dict,
             return_sample_losses=False

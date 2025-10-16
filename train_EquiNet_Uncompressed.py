@@ -462,48 +462,6 @@ def main(
         batch_size=test_batch_size,
     )
 
-    # val_errors_rrmse = []
-    # val_errors_rel_l2 = []
-    # val_errors_rapsd = []
-    # pred_eta = np.zeros(test_eta.shape)
-
-    # rrmse = functools.partial(
-    #     metrics.mean_squared_error,
-    #     sum_axes=(-1, -2),
-    #     relative=True,
-    #     squared=False,
-    # )
-    # rel_l2 = functools.partial(
-    #     l2_error,
-    #     l2_axes=(-1, -2),
-    #     relative=True,
-    #     squared=False,
-    # )
-
-    # for b, batch in enumerate(val_dloader):
-    #     pred = inference_fn(batch["scatter"])
-    #     start_idx = b*test_batch_size
-    #     end_idx   = min((b+1)*test_batch_size, pred_eta.shape[0])
-    #     pred_eta[start_idx:end_idx, :, :] = pred
-    #     true = batch["eta"]
-    #     val_errors_rrmse.append(rrmse(pred=pred, true=true))
-    #     val_errors_rel_l2.append(rel_l2(pred=pred, true=true))
-    #     for i in range(true.shape[0]):
-    #         val_errors_rapsd.append(np.abs(np.log(
-    #             rapsd(pred[i],fft_method=np.fft)
-    #             /rapsd(true[i],fft_method=np.fft)
-    #         )))
-
-    # val_errors_rrmse  = np.array(val_errors_rrmse)
-    # val_errors_rel_l2 = np.concatenate(val_errors_rel_l2, axis=0)
-    # val_errors_rapsd  = np.concatenate(val_errors_rapsd, axis=0)
-
-    # val_rel_l2_mean = np.mean(val_errors_rel_l2)
-    # val_rrmse_mean  = np.mean(val_errors_rrmse)
-    # print(f"Mean rel l2 error: {val_rel_l2_mean*100:.3f}%")
-    # print('Relative root-mean-square error = %.3f' % (val_rrmse_mean*100), '%')
-    # print('Mean energy log ratio = %.3f' % np.mean(val_errors_rapsd))
-
     x_vals = train_mfisnet_dd["x_vals"]
     loss_fn_dict = get_loss_fns(["rrmse", "rel_l2", "psnr"])
     dset_name_list = ["train", "val", "test"]
@@ -518,7 +476,6 @@ def main(
         dset_scatter, dset_eta = dataset_list[i]
         print(f"{dset}_scatter shape: {dset_scatter.shape}")
         print(f"{dset}_eta shape:     {dset_eta.shape}")
-        # args.log_batch_size
         dset_preds, dset_loss_vals = eval_model(
             trained_state,
             core_module,

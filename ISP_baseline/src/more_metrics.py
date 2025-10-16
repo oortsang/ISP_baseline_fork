@@ -74,12 +74,12 @@ def mse_alt(
     out_mse_errs = mse_errs
     return out_mse_errs
 
-
 def psnr(
     pred: jax.Array,
     true: jax.Array,
     *,
     psnr_axes: Sequence[int] = (),
+    squared: bool=True,
     decibels: bool=True,
 ):
     """Calculate the PSNR per sample
@@ -88,8 +88,16 @@ def psnr(
     pred_mse = jnp.mean(jnp.square(jnp.abs(pred-true)), axis=psnr_axes, keepdims=True)
 
     if decibels:
-        psnr = 20 * jnp.log10(true_max) - 10 * pred_mse
+        squared_scaling = 2 if squared else 1
+        psnr = (
+            squared_scaling
+            * (10 * jnp.log10(true_max) - 5 * pred_mse)
+        )
     else:
-        psnr = true_max**2 / pred_mse
+        psnr = (
+            true_max**2 / pred_mse
+            if squared
+            else true_max / jnp.sqrt(pred_mse)
+        )
 
     return psnr
