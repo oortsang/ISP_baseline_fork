@@ -1,0 +1,54 @@
+#!/bin/bash
+
+#SBATCH --job-name={{job_name}}
+#SBATCH --partition={{partition}}
+#SBATCH --mem={{mem}}
+#SBATCH --gpus={{num_gpu}}
+#SBATCH --gres=gpu:{{num_gpu}}
+#SBATCH --cpus-per-task={{num_cpu}}
+#SBATCH --nodes={{num_nodes}}
+#SBATCH --time={{job_walltime}}
+#SBATCH --output={{logs_folder}}/{{log_name}}.out
+#SBATCH --error={{logs_folder}}/{{log_name}}.err
+#SBATCH --exclude=
+#SBATCH --mail-type={{mail_type}}
+#SBATCH --mail-user={{mail_user}}
+
+echo "`date` Starting Job"
+echo "SLURM Info: Job name:${SLURM_JOB_NAME}"
+echo "    JOB ID: ${SLURM_JOB_ID}"
+echo "    Host list: ${SLURM_JOB_NODELIST}"
+echo "    CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES}"
+nvidia-smi -L
+which python
+
+NU_ARG=$(echo "{{ data_input_nus }}" | sed "s/(\|)\|\| //g" | sed "s/,/ /g")
+NU_NAME=$(echo ${NU_ARG} | sed "s/ /_/g")
+
+{{ command }} \
+{{ dataset_dir }} \
+--data_input_nus ${NU_ARG} \
+{{ n_x }} \
+{{ n_r }} \
+{{ downsample_ratio }} \
+{{ blur_sigma }} \
+{{ num_train }} \
+{{ num_val }} \
+{{ num_test }} \
+{{ n_cnn_layers_2d }} \
+{{ n_cnn_channels_2d }} \
+{{ kernel_size_2d }} \
+{{ lr_init }} \
+{{ n_epochs }} \
+{{ batch_size }} \
+{{ log_batch_size }} \
+{{ output_pred_save }} \
+{{ output_pred_shard_size }} \
+{{ output_pred_dir }} \
+{{ work_dir }} \
+{{ noise_to_signal_ratio }} \
+{{ use_noise_seed }} \
+{{ noise_seed_list_train }} \
+{{ noise_seed_list_val }} \
+{{ noise_seed_list_test }} \
+{{ debug }}

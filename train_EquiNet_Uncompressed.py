@@ -3,7 +3,7 @@ import os
 import sys
 import time
 
-os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.80"
+os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.90"
 os.environ["JAX_TRACEBACK_FILTERING"] = "off"
 import numpy as np
 import jax
@@ -37,6 +37,7 @@ from ISP_baseline.src.data_io import (
     load_single_dir_slice,
     load_multi_dir_slice,
     get_multifreq_dset_dirs,
+    save_single_dir_slice,
 )
 from ISP_baseline.src.datasets import (
     convert_mfisnet_data_dict,
@@ -44,6 +45,12 @@ from ISP_baseline.src.datasets import (
 )
 from ISP_baseline.src.more_metrics import (
     l2_error
+)
+from ISP_baseline.src.predictions import (
+    get_loss_fns,
+    aggregate_loss_vals,
+    eval_model,
+    save_preds_q_cart,
 )
 
 tf.config.set_visible_devices([], device_type='GPU')
@@ -104,19 +111,19 @@ def setup_args() -> argparse.Namespace:
     parser.add_argument("--truncate_num_test", type=int)
     parser.add_argument("--seed", type=int, default=35675)
     parser.add_argument("--use_noise_seed", choices=bool_choices, default="false")
-    parser.add_argument("--noise_seed_train",  type=int, default=10128329)
-    parser.add_argument("--noise_seed_val",    type=int, default=20293834)
-    parser.add_argument("--noise_seed_test",   type=int, default=30943792)
+    parser.add_argument("--noise_seed_list_train",  nargs="*", type=int)
+    parser.add_argument("--noise_seed_list_val",    nargs="*", type=int)
+    parser.add_argument("--noise_seed_list_test",   nargs="*", type=int)
     parser.add_argument("--n_cnn_layers_2d",   type=int, default=3)
     parser.add_argument("--n_cnn_channels_2d", type=int, default=6)
     parser.add_argument("--kernel_size_2d", type=int, default=5)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--log_batch_size", type=int, default=100, help="batch size while logging")
     parser.add_argument("--n_epochs", type=int, default=100)
-    parser.add_argument("--lr_init_base", type=float, default=3e-4)
-    parser.add_argument("--eta_min_base", type=float, default=1e-4)
-    parser.add_argument("--momentum", type=float, default=0.0)
-    parser.add_argument("--weight_decay_base", type=float, default=0.0)
+    parser.add_argument("--lr_init", type=float, default=1e-5)
+    # parser.add_argument("--eta_min_base", type=float, default=1e-4)
+    # parser.add_argument("--momentum", type=float, default=0.0)
+    # parser.add_argument("--weight_decay_base", type=float, default=0.0)
     parser.add_argument("--n_epochs_per_log", type=int, default=5)
     parser.add_argument(
         "--noise_to_signal_ratio", default=None, type=float
@@ -150,16 +157,9 @@ def setup_args() -> argparse.Namespace:
 
     # Misc. options
     a = parser.parse_args()
-
-    # Processing for ease of use
-    # if a.use_targets == "smoothed":
-    #     a.use_smoothed_targets = True
-    # elif a.use_targets == "original":
-    #     a.use_smoothed_targets = False
-    # a.freq_idx = a.freq_idx if a.freq_idx is not None else a.freq_lvl
-
     bool_args = [
         "use_noise_seed",
+        "output_pred_save",
     ]
     # Process the boolean arguments from strings
     for bool_arg in bool_args:
@@ -187,9 +187,25 @@ def main(
     """
     Train the Uncompressed EquiNet model
     """
-
-    # Set seeds for reproducibility
     np.random.seed(args.seed)
+    print(f"Selecting work dir: {args.work_dir}")
+    # Get noise seeds
+    if args.use_noise_seed:
+        eff_noise_seed_list_train = args.noise_seed_list_train
+        eff_noise_seed_list_val   = args.noise_seed_list_val
+        eff_noise_seed_list_test  = args.noise_seed_list_test
+    else:
+        eff_noise_seed_list_train = None
+        eff_noise_seed_list_val   = None
+        eff_noise_seed_list_test  = None
+
+    if args.noise_to_signal_ratio != 0:
+        logging.info(f"Using seed as {eff_noise_seed_list_train} for the training set")
+        logging.info(f"Using seed as {eff_noise_seed_list_val} for the val set")
+        logging.info(f"Using seed as {eff_noise_seed_list_test} for the test set")
+    else:
+        logging.info(f"Not adding noise!")
+
 
     # Grab settings from arguments
     # L = args.quadtree_l
@@ -206,8 +222,6 @@ def main(
     NTRAIN = args.truncate_num_train
     NVAL   = args.truncate_num_val
     NTEST  = args.truncate_num_test
-    # NVAL   = args.truncate_num_val
-    # NTEST  = args.truncate_num_test
     vram_msg = utils.get_memory_info_jax(jax_device, print_msg=False)
     print(f"Before loading data: {vram_msg}")
 
@@ -223,10 +237,16 @@ def main(
         train_dirs,
         global_idx_start=0,
         global_idx_end=NTRAIN,
+        noise_to_sig_ratio=args.noise_to_signal_ratio,
+        noise_seed=eff_noise_seed_list_train,
+        noise_seed_mode="sequential",
+        noise_norm_mode="inf",
     )
     print(f"Loaded: {', '.join([f'{key}{val.shape}' for (key, val) in train_mfisnet_dd.items()])}")
     train_wb_dd = convert_mfisnet_data_dict(
         train_mfisnet_dd,
+        scatter_as_real=True,
+        real_imag_axis=1,
         blur_sigma=blur_sigma,
         downsample_ratio=downsample_ratio,
     )
@@ -252,9 +272,15 @@ def main(
         val_dirs,
         global_idx_start=0,
         global_idx_end=NVAL,
+        noise_to_sig_ratio=args.noise_to_signal_ratio,
+        noise_seed=eff_noise_seed_list_val,
+        noise_seed_mode="sequential",
+        noise_norm_mode="inf",
     )
     val_wb_dd = convert_mfisnet_data_dict(
         val_mfisnet_dd,
+        scatter_as_real=True,
+        real_imag_axis=1,
         blur_sigma=blur_sigma,
         downsample_ratio=downsample_ratio,
     )
@@ -295,9 +321,6 @@ def main(
         "N_cnn_channels": N_cnn_channels,
         "kernel_size": kernel_size,
     }
-    # print(f"cart_mat type: {type(cart_mat)}")
-    # vram_msg = utils.get_memory_info_jax(jax_device, print_msg=False)
-    # print(f"After loading: {vram_msg}")
 
     core_module = Uncompressed.UncompressedModelFlexible(
         nx = nx,
@@ -323,11 +346,13 @@ def main(
     print('Number of trainable parameters:', param_count)
 
     print(f"Training...")
-    epochs = 100
-    num_train_steps = NTRAIN * args.n_epochs // 16  #@param
+    num_train_steps = NTRAIN * args.n_epochs // args.batch_size  #@param
+    batches_per_epoch = args.n_epochs // args.batch_size
+    log_batches_per_epoch = args.n_epochs // args.log_batch_size
     # workdir = os.path.abspath('') + "/tmp/Uncompressed10squaresDev"  #@param
     workdir = os.path.join(os.path.abspath(''), args.work_dir)
-    initial_lr = 1e-5 #@param
+    # initial_lr = 1e-5 #@param
+    initial_lr = args.lr_init
     peak_lr = 5e-3 #@pawram
     warmup_steps = num_train_steps // 20  #@param
     end_lr = 1e-8 #@param
@@ -351,10 +376,6 @@ def main(
     vram_msg = utils.get_memory_info_jax(jax_device, print_msg=False)
     print(f"Before training: {vram_msg}")
 
-    # print(f"trainer has: {trainer.__dir__()}")
-    # import pdb; pdb.set_trace()
-    # eval_dloader = train_dloader
-    # val_dloader = train_dloader
     try:
         templates.run_train(
             train_dataloader=train_dloader,
@@ -362,18 +383,21 @@ def main(
             workdir=workdir,
             total_train_steps=num_train_steps,
             metric_writer=metric_writers.create_default_writer(
-                workdir, asynchronous=False
+                workdir, asynchronous=False,
             ),
             metric_aggregation_steps=10,
             eval_dataloader=val_dloader_looped,
-            eval_every_steps = 100,
+            eval_every_steps = (
+                # args.n_epochs_per_log*batches_per_epoch
+                100
+            ),
+            # num_batches_per_eval = log_batches_per_epoch,
             num_batches_per_eval = 1,
             callbacks=(
                 templates.TqdmProgressBar(
                     total_train_steps=num_train_steps,
                     train_monitors=("train_loss",),
                     eval_monitors=("eval_rel_l2_mean",),
-                    # eval_monitors=("eval_rrmse_mean",),
                 ),
                 templates.TrainStateCheckpoint(
                     base_dir=workdir,
@@ -387,14 +411,17 @@ def main(
         logging.error(f"Exception: {e}")
         vram_msg = utils.get_memory_info_jax(jax_device, print_msg=False)
         print(f"{vram_msg}")
-
         sys.exit(1)
+    vram_msg = utils.get_memory_info_jax(jax_device, print_msg=False)
+    print(f"After training: {vram_msg}")
+
+
     trained_state = trainers.TrainState.restore_from_orbax_ckpt(
-        f"{workdir}/checkpoints", step=None
+        f"{workdir}/checkpoints", step=None,
     )
 
     inference_fn = trainers.DeterministicTrainer.build_inference_fn(
-        trained_state, core_module
+        trained_state, core_module,
     )
 
     test_dirs = get_multifreq_dset_dirs(
@@ -408,10 +435,16 @@ def main(
         test_dirs,
         global_idx_start=0,
         global_idx_end=NTEST,
+        noise_to_sig_ratio=args.noise_to_signal_ratio,
+        noise_seed=eff_noise_seed_list_test,
+        noise_seed_mode="sequential",
+        noise_norm_mode="inf",
     )
     print(f"Loaded: {', '.join([f'{key}{val.shape}' for (key, val) in test_mfisnet_dd.items()])}")
     test_wb_dd = convert_mfisnet_data_dict(
         test_mfisnet_dd,
+        scatter_as_real=True,
+        real_imag_axis=1,
         blur_sigma=blur_sigma,
         downsample_ratio=downsample_ratio,
     )
@@ -419,6 +452,8 @@ def main(
     # Try downsampling since the sparsepolartocartesian step is so slow :((
     test_eta     = test_wb_dd["eta"]
     test_scatter = test_wb_dd["scatter"]
+    print(f"test_eta     shape: {test_eta.shape}")
+    print(f"test_scatter shape: {test_scatter.shape}")
 
     test_batch_size = args.log_batch_size
     test_dataset, test_dloader = setup_tf_dataset(
@@ -427,47 +462,94 @@ def main(
         batch_size=test_batch_size,
     )
 
-    val_errors_rrmse = []
-    val_errors_rel_l2 = []
-    val_errors_rapsd = []
-    pred_eta = np.zeros(test_eta.shape)
+    # val_errors_rrmse = []
+    # val_errors_rel_l2 = []
+    # val_errors_rapsd = []
+    # pred_eta = np.zeros(test_eta.shape)
 
-    rrmse = functools.partial(
-        metrics.mean_squared_error,
-        sum_axes=(-1, -2),
-        relative=True,
-        squared=False,
-    )
-    rel_l2 = functools.partial(
-        l2_error,
-        l2_axes=(-1, -2),
-        relative=True,
-        squared=False,
-    )
+    # rrmse = functools.partial(
+    #     metrics.mean_squared_error,
+    #     sum_axes=(-1, -2),
+    #     relative=True,
+    #     squared=False,
+    # )
+    # rel_l2 = functools.partial(
+    #     l2_error,
+    #     l2_axes=(-1, -2),
+    #     relative=True,
+    #     squared=False,
+    # )
 
-    for b, batch in enumerate(val_dloader):
-        pred = inference_fn(batch["scatter"])
-        start_idx = b*test_batch_size
-        end_idx   = min((b+1)*test_batch_size, pred_eta.shape[0])
-        pred_eta[start_idx:end_idx, :, :] = pred
-        true = batch["eta"]
-        val_errors_rrmse.append(rrmse(pred=pred, true=true))
-        val_errors_rel_l2.append(rel_l2(pred=pred, true=true))
-        for i in range(true.shape[0]):
-            val_errors_rapsd.append(np.abs(np.log(
-                rapsd(pred[i],fft_method=np.fft)
-                /rapsd(true[i],fft_method=np.fft)
-            )))
+    # for b, batch in enumerate(val_dloader):
+    #     pred = inference_fn(batch["scatter"])
+    #     start_idx = b*test_batch_size
+    #     end_idx   = min((b+1)*test_batch_size, pred_eta.shape[0])
+    #     pred_eta[start_idx:end_idx, :, :] = pred
+    #     true = batch["eta"]
+    #     val_errors_rrmse.append(rrmse(pred=pred, true=true))
+    #     val_errors_rel_l2.append(rel_l2(pred=pred, true=true))
+    #     for i in range(true.shape[0]):
+    #         val_errors_rapsd.append(np.abs(np.log(
+    #             rapsd(pred[i],fft_method=np.fft)
+    #             /rapsd(true[i],fft_method=np.fft)
+    #         )))
 
-    val_errors_rrmse  = np.array(val_errors_rrmse)
-    val_errors_rel_l2 = np.concatenate(val_errors_rel_l2, axis=0)
-    val_errors_rapsd  = np.concatenate(val_errors_rapsd, axis=0)
+    # val_errors_rrmse  = np.array(val_errors_rrmse)
+    # val_errors_rel_l2 = np.concatenate(val_errors_rel_l2, axis=0)
+    # val_errors_rapsd  = np.concatenate(val_errors_rapsd, axis=0)
 
-    val_rel_l2_mean = np.mean(val_errors_rel_l2)
-    val_rrmse_mean  = np.mean(val_errors_rrmse)
-    print(f"Mean rel l2 error: {val_rel_l2_mean*100:.3f}%")
-    print('Relative root-mean-square error = %.3f' % (val_rrmse_mean*100), '%')
-    print('Mean energy log ratio = %.3f' % np.mean(val_errors_rapsd))
+    # val_rel_l2_mean = np.mean(val_errors_rel_l2)
+    # val_rrmse_mean  = np.mean(val_errors_rrmse)
+    # print(f"Mean rel l2 error: {val_rel_l2_mean*100:.3f}%")
+    # print('Relative root-mean-square error = %.3f' % (val_rrmse_mean*100), '%')
+    # print('Mean energy log ratio = %.3f' % np.mean(val_errors_rapsd))
+
+    x_vals = train_mfisnet_dd["x_vals"]
+    loss_fn_dict = get_loss_fns(["rrmse", "rel_l2", "psnr"])
+    dset_name_list = ["train", "val", "test"]
+    # dataset_list = [train_dataset, val_dataset, test_dataset]
+    dataset_list = [
+        (train_scatter, train_eta),
+        (val_scatter,   val_eta),
+        (test_scatter,  test_eta),
+    ]
+    for i, dset in enumerate(dset_name_list):
+        # dataset = dataset_list[i]
+        dset_scatter, dset_eta = dataset_list[i]
+        print(f"{dset}_scatter shape: {dset_scatter.shape}")
+        print(f"{dset}_eta shape:     {dset_eta.shape}")
+        # args.log_batch_size
+        dset_preds, dset_loss_vals = eval_model(
+            trained_state,
+            core_module,
+            # dataset,
+            dset_scatter=dset_scatter,
+            dset_eta=dset_eta,
+            eval_batch_size=args.log_batch_size,
+            loss_fn_dict=loss_fn_dict,
+            return_sample_losses=False
+        )
+        # TODO: think about how to display this more nicely...
+        print(f"dset {dset} losses: {dset_loss_vals}")
+
+        # TODO: save outputs to disk (if requested)
+        if args.output_pred_save:
+            print(f"Saving predictions to disk")
+            dset_output_pred_dir = os.path.join(
+                args.output_pred_dir,
+                f"{dset}_scattering_objs"
+            )
+            save_preds_q_cart(
+                dset_preds,
+                x_vals,
+                dset_output_pred_dir,
+                file_format="scattering_objs_{0}.h5",
+                shard_size=args.output_pred_shard_size,
+            )
+        else:
+            print(f"Not saving predictions to disk")
+
+
 
 if __name__ == "__main__":
     a = setup_args()
@@ -495,5 +577,6 @@ if __name__ == "__main__":
     # root.addHandler(handler)
 
 
+    print(f"Received the following arguments: {a}")
     logging.info(f"Received the following arguments: {a}")
     main(a, return_model=False)

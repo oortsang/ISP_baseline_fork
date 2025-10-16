@@ -34,11 +34,12 @@ def apply_blur_to_q(
 def d_rs_to_scatter(
     d_rs: np.ndarray,
     as_real: bool=True,
+    real_imag_axis: int=1,
     downsample_ratio: int = 1,
 ) -> np.ndarray:
     """Sends the d_rs object to the scattered wave array, scatter
     If as_real is set to True, then the real/imag components are placed
-    into different channels along a new second axis
+    into different channels along a new axis, given by real_imag_axis
     """
     scatter = d_rs.transpose(0, 3, 2, 1)
     # Do I need to flip 2 and 3? Should it be like this:
@@ -55,7 +56,7 @@ def d_rs_to_scatter(
     if as_real:
         scatter = np.stack(
             [scatter.real, scatter.imag],
-            axis=1,
+            axis=real_imag_axis,
         )
     return scatter
 
@@ -75,6 +76,7 @@ def convert_mfisnet_data_dict(
     blur_sigma: float=0.5,
     scatter_as_real: bool=True,
     downsample_ratio: int=1,
+    real_imag_axis: int=1,
 ) -> dict:
     """Converts a mfisnet-style data dictionary for use with
     the wide-band equivariant network models
@@ -89,7 +91,8 @@ def convert_mfisnet_data_dict(
     scatter = d_rs_to_scatter(
         d_rs,
         as_real=scatter_as_real,
-        downsample_ratio=downsample_ratio
+        real_imag_axis=real_imag_axis,
+        downsample_ratio=downsample_ratio,
     )
     nx = d_rs.shape[-2] // downsample_ratio
 

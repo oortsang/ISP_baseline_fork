@@ -1,0 +1,225 @@
+---
+definitions:
+  command: python train_EquiNet_Uncompressed.py
+  template: base_template_train_equinet_uncompressed.jinja
+  copy_to_item: true
+  default_arguments:
+    mem: "50G"
+    logs_folder: logs/train_wben
+    partition: "willett-gpu,gpu"
+    num_nodes: 1
+    num_cpu: 2
+    num_gpu: 1
+    job_walltime: "8:00:00"
+    mail_type: "NONE"
+    mail_user: ""
+  submission:
+    !SLURMQueue
+      jobs_folder: jobs/train_wben
+      job_name_key: log_name
+      fake_submission: true
+      overwrite_scripts: true
+  constants:
+    base_dir: &BASE_DIR "/home-nfs/oortsang/ISP_baselines_fork"
+    dataset_dir: &DATASET_DIR "/home-nfs/oortsang/rlc-repo/dataset"
+    pred_dir_base: &PRED_DIR_BASE "/home-nfs/oortsang/ISP_baselines_fork/data/predictions"
+    num_train: &NUM_TRAIN  100
+    num_val:   &NUM_VAL    100
+    num_test:  &NUM_TEST   100
+    N_x: &N_X 192
+    N_r: &N_R 192
+
+arguments:
+  - !Scalar
+    name: run_date
+    value: 2025-10-16
+    metadata_rules: [ !SaveValueInMetadata { path: run_date } ]
+
+  - !Scalar
+    name: whole_run_name
+    value: "wb_equinet_basic"
+    metadata_rules: [ !SaveValueInMetadata { path: whole_run_name } ]
+
+  - !Scalar
+    name: data_input_nus
+    value: "(1,2,3,4,5,6,7,8,9,10)"
+
+  - !Scalar
+    name: N_k
+    value: 10
+    metadata_rules: [ !SaveValueInMetadata { path: N_k } ]
+
+  - !Scalar
+    name: num_train
+    prefix: "--truncate_num_train"
+    value: *NUM_TRAIN
+    metadata_rules: [ !SaveValueInMetadata { path: num_train } ]
+  - !Scalar
+    name: num_val
+    prefix: "--truncate_num_val"
+    value: *NUM_VAL
+    metadata_rules: [ !SaveValueInMetadata { path: num_val } ]
+  - !Scalar
+    name: num_test
+    prefix: "--truncate_num_test"
+    value: *NUM_TEST
+    metadata_rules: [ !SaveValueInMetadata { path: num_test } ]
+
+
+  - !Scalar { name: base_dir, value: *BASE_DIR }
+  - !Scalar { name: dataset_dir, value: *DATASET_DIR, prefix: "--ref_data_dir_base" }
+  - !Scalar
+    name: pred_dir_base
+    value: *PRED_DIR_BASE
+    metadata_rules:  [ !SaveValueInMetadata { path: pred_dir_base } ]
+
+  - !Scalar { name: n_x, value: *N_X, prefix: "--neta" }
+  - !Scalar { name: n_r, value: *N_R, prefix: "--nx" }
+  - !Scalar { name: blur_sigma, value: 0.5, prefix: "--blur_sigma" }
+  - !Scalar { name: downsample_ratio, value: 1, prefix: "--downsample_ratio" }
+  - !Scalar { name: n_epochs, value: 100, prefix: "--n_epochs" }
+  - !Scalar { name: batch_size, value: 16, prefix: "--batch_size" }
+  - !Scalar { name: log_batch_size, value: 100, prefix: "--log_batch_size" }
+  - !Scalar { name: debug, value: "--debug"}
+
+  - !Scalar { name: output_pred_save, value: "true", prefix: "--output_pred_save" }
+  - !Scalar { name: output_pred_shard_size, value: 1000, prefix: "--output_pred_shard_size" }
+
+  # Noise settings
+  - !Range
+    name: noise_to_signal_ratio
+    prefix: "--noise_to_signal_ratio"
+    values: [ 0.0 ]
+    metadata_rules: [!SaveValueInMetadata {path: noise_to_signal_ratio}]
+
+  - !Scalar
+    name: noise_seed_base_train
+    value: 10003221
+    metadata_rules: [!SaveValueInMetadata {path: noise_seed_base_train}]
+  - !Scalar
+    name: noise_seed_base_val
+    value: 20003221
+    metadata_rules: [!SaveValueInMetadata {path: noise_seed_base_val}]
+  - !Scalar
+    name: noise_seed_base_test
+    value: 30003221
+    metadata_rules: [!SaveValueInMetadata {path: noise_seed_base_test}]
+
+  - !ArgumentFromMetadata
+    name: noise_seed_list_train
+    prefix: "--noise_seed_list_train"
+    format_rule:  "$( seq $(({nsbt}+10000)) 10000 $(({nsbt} + {N_k}*10000)) )"
+    sources: [
+      { path: noise_seed_base_train, destination: nsbt },
+      { path: N_k, destination: N_k },
+    ]
+    metadata_rules: [!SaveValueInMetadata {path: noise_seed_list_train}]
+  - !ArgumentFromMetadata
+    name: noise_seed_list_val
+    prefix: "--noise_seed_list_val"
+    format_rule:  "$( seq $(({nsbv}+10000)) 10000 $(({nsbv} + {N_k}*10000)) )"
+    sources: [
+      { path: noise_seed_base_val, destination: nsbv },
+      { path: N_k, destination: N_k },
+    ]
+    metadata_rules: [!SaveValueInMetadata {path: noise_seed_list_val}]
+  - !ArgumentFromMetadata
+    name: noise_seed_list_test
+    prefix: "--noise_seed_list_test"
+    format_rule:  "$( seq $(({nsbt}+10000)) 10000 $(({nsbt} + {N_k}*10000)) )"
+    sources: [
+      { path: noise_seed_base_test, destination: nsbt },
+      { path: N_k, destination: N_k },
+    ]
+    metadata_rules: [!SaveValueInMetadata {path: noise_seed_list_test}]
+
+
+  # Architecture hyperparameters
+  - !Range
+    name: n_cnn_layers_2d
+    prefix: "--n_cnn_layers_2d"
+    values: [ 3 ]
+    metadata_rules: [ !SaveValueInMetadata { path: n_cnn_layers_2d } ]
+  - !Range
+    name: n_cnn_channels_2d
+    prefix: "--n_cnn_channels_2d"
+    values: [ 6 ]
+    metadata_rules: [ !SaveValueInMetadata { path: n_cnn_channels_2d } ]
+  - !Range
+    name: kernel_size_2d
+    prefix: "--kernel_size_2d"
+    values: [ 5 ]
+    metadata_rules: [ !SaveValueInMetadata { path: kernel_size_2d } ]
+
+  # Optimization hyperparameters
+  - !Range
+    name: lr_init
+    prefix: "--lr_init"
+    values: [ 1e-5 ]
+    metadata_rules: [ !SaveValueInMetadata { path: lr_init } ]
+
+
+  # I/O stuff
+  - !ArgumentFromMetadata
+    name: parameters
+    format_rule: "arch_{ncl2d}_{ncc2d}_{ks2d}"
+    sources: [
+      { path: n_cnn_layers_2d,   destination: ncl2d },
+      { path: n_cnn_channels_2d, destination: ncc2d },
+      { path: kernel_size_2d,    destination: ks2d },
+    ]
+    metadata_rules: [ !SaveValueInMetadata { path: parameters } ]
+
+  - !ArgumentFromMetadata
+    name: output_pred_dir
+    prefix: "--output_pred_dir"
+    format_rule: "{pred_dir_base}/{run_date}_outputs_{whole_run_name}_{parameters}"
+    sources: [
+      { path: pred_dir_base,  destination: pred_dir_base },
+      { path: run_date,       destination: run_date },
+      { path: whole_run_name, destination: whole_run_name },
+      { path: parameters,     destination: parameters },
+    ]
+    metadata_rules: [ !SaveValueInMetadata { path: output_pred_dir } ]
+
+
+  - !ArgumentFromMetadata
+    name: work_dir
+    prefix: "--work_dir"
+    format_rule: "tmp/{run_date}_{whole_run_name}_{parameters}"
+    sources: [
+      { path: pred_dir_base,  destination: pred_dir_base },
+      { path: run_date,       destination: run_date },
+      { path: whole_run_name, destination: whole_run_name },
+      { path: parameters,     destination: parameters },
+    ]
+    metadata_rules: [ !SaveValueInMetadata { path: work_dir } ]
+
+  - !ArgumentFromMetadata
+    name: model_name
+    format_rule: "{run_date}_{whole_run_name}_{parameters}"
+    # format_rule: "MODEL_NAME_TMP"
+    sources: [
+      { path: run_date,       destination: run_date },
+      { path: whole_run_name, destination: whole_run_name },
+      { path: parameters,     destination: parameters },
+    ]
+    metadata_rules: [ !SaveValueInMetadata { path: model_name } ]
+
+  - !ArgumentFromMetadata
+    name: log_name
+    format_rule: "{model_name}"
+    sources: [
+      { path: model_name, destination: model_name },
+    ]
+    metadata_rules: [ !SaveValueInMetadata { path: log_name } ]
+
+  - !ArgumentFromMetadata
+    name: job_name
+    format_rule: "{parameters};{run_date}_{whole_run_name}_"
+    sources: [
+      { path: run_date,       destination: run_date },
+      { path: whole_run_name, destination: whole_run_name },
+      { path: parameters,     destination: parameters },
+    ]
+    metadata_rules: [ !SaveValueInMetadata { path: job_name } ]

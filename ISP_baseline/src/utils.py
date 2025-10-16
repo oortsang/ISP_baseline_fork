@@ -222,7 +222,7 @@ def get_memory_info_jax(device=None, print_msg: bool=True):
     f = t-u # free (within preallocation)
     msg_2 = (
         f"VRAM (MB): {f>>20} free of {t>>20} total (within preallocation); "
-        f"{u>>20}; peaked at {p>>20}"
+        f"usage is currently {u>>20} and peaked at {p>>20}"
     )
     # t = torch.cuda.get_device_properties(device).total_memory
     # r = torch.cuda.memory_reserved(0)

@@ -4,9 +4,11 @@ dataset_dir=/home-nfs/oortsang/rlc-repo/dataset
 
 echo "Please ensure the jaxisp-v3 environment is active before running this script!"
 
+# --data_input_nus 1 2 3 4 5 6 7 8 9 10 \
+
 python train_B_EquiNet_Compressed.py \
 --ref_data_dir_base $dataset_dir \
---data_input_nus 1 5 10 \
+--data_input_nus 2 5 10 \
 --quadtree_l 4 \
 --quadtree_s 12 \
 --quadtree_r 3 \
@@ -14,7 +16,7 @@ python train_B_EquiNet_Compressed.py \
 --nx 192 \
 --downsample_ratio 4 \
 --blur_sigma 0.5 \
---truncate_num_train 1000 \
+--truncate_num_train 100 \
 --truncate_num_val 100 \
 --truncate_num_test 100 \
 --n_cnn_layers_2d 3 \

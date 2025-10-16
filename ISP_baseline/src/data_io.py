@@ -21,6 +21,7 @@ Q_CART = "q_cart"
 D_RS   = "d_rs"
 TRUNCATABLE_KEYS = {Q_CART, D_RS, SAMPLE_COMPLETION}
 
+from ISP_baseline.src.noise import add_noise_to_d
 
 ### Single-file HDF5 access functions ###
 
@@ -553,6 +554,10 @@ def load_cart_multifreq_dataset(
     global_idx_start: int=0,
     global_idx_end: int=None,
     add_noise: bool=False,
+    noise_to_sig_ratio: float=0,
+    noise_seed: int | list=None,
+    noise_seed_mode: str = "sequential",
+    noise_norm_mode: str = "inf",
 ):
     """Load just the cartesian parts of the multifrequency dataset
     """
@@ -564,6 +569,73 @@ def load_cart_multifreq_dataset(
         sample_keys=[Q_CART, D_RS, SAMPLE_COMPLETION],
         freq_dep_keys=[D_RS],
     )
-    if add_noise:
-        raise NotImplementedError(f"Noise not supported currently")
+    if add_noise and noise_to_sig_ratio != 0:
+        # raise NotImplementedError(f"Noise not supported currently")
+        logging.info(
+            f"Adding noise at level {noise_to_sig_ratio} with scaling {noise_norm_mode}"
+        )
+        drs = loaded_dd[D_RS]
+        drs_noisy = add_noise_to_d(
+            drs,
+            noise_to_sig_ratio,
+            noise_seed=noise_seed,
+            seed_mode=noise_seed_mode,
+            norm_mode=noise_norm_mode,
+
+        )
+        loaded_dd[D_RS] = drs_noisy
     return loaded_dd
+
+def save_single_dir_slice(
+    data_dict: dict,
+    dir_name: str,
+    file_format: str="scattering_objs_{0}.h5",
+    shard_size: int = 1000,
+    sample_keys: Iterable=None,
+):
+    """Save the contents of the data_dict to a single directory slice
+    """
+    # collection of all keys present
+    all_keys = set(data_dict.keys())
+    # Keys corresponding to samples that will get split up by file
+    sample_keys = sample_keys if sample_keys is not None \
+        else all_keys.intersection({*TRUNCATABLE_KEYS, SAMPLE_COMPLETION})
+    # Keys common to every file
+    common_keys = {key for key in all_keys if key not in sample_keys}
+
+    a_sample_key = list(sample_keys)[0]
+    num_samples = data_dict[a_sample_key].shape[0]
+    logging.info(f"(save_single_dir_slice) all_keys={all_keys}")
+    logging.info(f"(save_single_dir_slice) common_keys={common_keys}")
+    logging.info(f"(save_single_dir_slice) sample_keys={sample_keys}")
+    logging.info(f"(save_single_dir_slice) num_samples={num_samples}")
+
+    os.makedirs(dir_name, exist_ok=True)
+    shard_idx_starts = np.arange(0, num_samples, shard_size, dtype=int)
+    shard_names = [
+        os.path.join(
+            dir_name,
+            file_format.format(start_idx)
+        )
+        for start_idx in shard_idx_starts
+    ]
+    logging.info(f"(save_single_dir_slice) shard_names={shard_names}")
+    for i, start_idx in enumerate(shard_idx_starts):
+        shard_name  = shard_names[i]
+        start_idx   = start_idx
+        end_idx     = min(num_samples, start_idx+shard_size)
+        shard_slice = slice(start_idx, end_idx)
+
+        # Prepare the dictionary for this particular shard
+        shard_dd = {
+            # Every file gets this
+            **{k:v for (k,v) in data_dict.items() if k in common_keys},
+            # Shard-specific range
+            **{k:v[shard_slice] for (k,v) in data_dict.items() if k in sample_keys},
+        }
+        save_dict_to_hdf5(
+            shard_dd,
+            shard_name,
+        )
+    # logging.info(f"(save_single_dir_slice) finished")
+    return shard_names

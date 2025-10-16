@@ -7,6 +7,7 @@ import jax
 import jax.numpy as jnp
 
 
+
 def l2_error(
     pred: jax.Array,
     true: jax.Array,
@@ -49,11 +50,46 @@ def l2_error(
     # out_l2_err = jnp.mean(l2_errs, axis=mean_axes)
     return out_l2_errs
 
+
+def mse_alt(
+    pred: jax.Array,
+    true: jax.Array,
+    *,
+    mse_axes: Sequence[int] = (),
+    relative: bool = True,
+    squared: bool = False,
+):
+    """Alternate interface for (r)rmse that returns sample-wise values
+    """
+    if pred.shape != true.shape:
+        raise ValueError(
+            f"`pred` {pred.shape} and `true` {true.shape} must have the same shape."
+        )
+    mse_diffs = jnp.mean(jnp.square(jnp.abs(pred-true)), axis=mse_axes, keepdims=True)
+    mse_refs = jnp.mean(jnp.square(jnp.abs(true)), axis=mse_axes, keepdims=True)
+
+    mse_errs = (mse_diffs / mse_refs) if relative else mse_diffs
+    mse_errs = mse_errs if squared else jnp.sqrt(mse_errs)
+
+    out_mse_errs = mse_errs
+    return out_mse_errs
+
+
 def psnr(
     pred: jax.Array,
     true: jax.Array,
     *,
     psnr_axes: Sequence[int] = (),
+    decibels: bool=True,
 ):
-    """Figure out if this even works first..."""
-    pass
+    """Calculate the PSNR per sample
+    """
+    true_max = jnp.amax(jnp.abs(true), axis=psnr_axes, keepdims=True)
+    pred_mse = jnp.mean(jnp.square(jnp.abs(pred-true)), axis=psnr_axes, keepdims=True)
+
+    if decibels:
+        psnr = 20 * jnp.log10(true_max) - 10 * pred_mse
+    else:
+        psnr = true_max**2 / pred_mse
+
+    return psnr
