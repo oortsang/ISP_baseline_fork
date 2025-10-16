@@ -47,6 +47,7 @@ def get_loss_fns(loss_fns:list=["rrmse", "rel_l2"]):
         "psnr": functools.partial(
             psnr,
             psnr_axes=(-1, -2),
+            squared=True,
             decibels=True,
         ),
     }
