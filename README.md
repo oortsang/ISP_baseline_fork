@@ -23,6 +23,7 @@ New files:
 - `ISP_baseline/src/predictions.py` helps to evaluate models and save their predictions to disk.
 - `train_EquiNet_Uncompressed.py` is based on `ISP_baseline/examples/EquiNet_Uncompressed_10hSquares.ipynb`.
 - `train_B_EquiNet_Compressed.py` is based on `ISP_baseline/examples/B_EquiNet_Compressed_10hSquares.ipynb`.
+
 Other modifications worth mentioning:
 - `ISP_baseline/src/utils.py` now has an interface that saves the interpolation and rotation matrices to disk, to avoid the slow setup process each time. This is more noticeable on our larger 192x192 dataset compared to the original 80x80 dataset.
 - `ISP_baseline/models/Uncompressed.py` has an alternate interface for the model that allows for an arbitrary number of input frequencies.
