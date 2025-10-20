@@ -7,17 +7,17 @@ import flax.linen as nn
 def build_permutation_indices(L, l):
     """
     Compute permutation indices used for grouping neighboring blocks before applying H layers.
-    
+
     Args:
         L (int): The overall level determining the size of the data.
         l (int): The current level used to compute spacing and offsets.
-        
+
     Returns:
         jnp.ndarray: A 1D array of indices for reordering tensor dimensions.
     """
     # Calculate the spacing between indices at the current level.
     delta = 2**(L - l - 1)
-    
+
     # Create a tiled pattern over a small block.
     tmp = np.tile(np.arange(2) * delta, delta)
     # Adjust indices by repeating numbers over sub-blocks.
@@ -31,10 +31,10 @@ def build_permutation_indices(L, l):
 def build_switch_indices(L):
     """
     Compute indices to redistribute blocks according to the transformation represented by x -> M*xM.
-    
+
     Args:
         L (int): The overall level determining the block size.
-    
+
     Returns:
         jnp.ndarray: A 1D array of indices for reordering after transformation.
     """
@@ -56,11 +56,11 @@ class V(nn.Module):
     def __call__(self, x):
         """
         Applies x -> V*xV.
-        
+
         Args:
             x (jnp.ndarray): Input tensor with shape (..., n, s, 2), where the last
                              dimension represents [real, imaginary] components.
-                             
+
         Returns:
             jnp.ndarray: Transformed tensor with combined complex components.
         """
@@ -88,34 +88,34 @@ class V(nn.Module):
 
         y_re_1 = jnp.einsum('...iaj,ajk->...iak', x_re, vr1)
         y_re_1 = jnp.einsum('abj...i,bjk->abk...i', y_re_1, vr1)
-        
+
         y_re_2 = jnp.einsum('...iaj,ajk->...iak', x_re, vi1)
         y_re_2 = jnp.einsum('abj...i,bjk->abk...i', y_re_2, vi1)
-        
+
         y_re_3 = jnp.einsum('...iaj,ajk->...iak', x_im, vi2)
         y_re_3 = jnp.einsum('abj...i,bjk->abk...i', y_re_3, vr2)
-        
+
         y_re_4 = jnp.einsum('...iaj,ajk->...iak', x_im, vr2)
         y_re_4 = jnp.einsum('abj...i,bjk->abk...i', y_re_4, vi2)
-        
+
         # Sum the contributions for the real part.
         y_re = y_re_1 + y_re_2 + y_re_3 + y_re_4
-        
+
         y_im_1 = jnp.einsum('...iaj,ajk->...iak', x_im, vr3)
         y_im_1 = jnp.einsum('abj...i,bjk->abk...i', y_im_1, vr3)
-        
+
         y_im_2 = jnp.einsum('...iaj,ajk->...iak', x_im, vi3)
         y_im_2 = jnp.einsum('abj...i,bjk->abk...i', y_im_2, vi3)
-        
+
         y_im_3 = jnp.einsum('...iaj,ajk->...iak', x_re, vi4)
         y_im_3 = jnp.einsum('abj...i,bjk->abk...i', y_im_3, vr4)
-        
+
         y_im_4 = jnp.einsum('...iaj,ajk->...iak', x_re, vr4)
         y_im_4 = jnp.einsum('abj...i,bjk->abk...i', y_im_4, vi4)
-        
+
         # Sum the contributions for the imaginary part.
         y_im = y_im_1 + y_im_2 + y_im_3 + y_im_4
-        
+
         # Stack the computed real and imaginary parts into a complex tensor.
         y = jnp.stack([y_re, y_im], axis=-1)
         return y
@@ -127,10 +127,10 @@ class H(nn.Module):
     def __call__(self, x):
         """
         Applies x -> H*xH.
-        
+
         Args:
             x (jnp.ndarray): Input tensor.
-            
+
         Returns:
             jnp.ndarray: Transformed tensor.
         """
@@ -151,12 +151,12 @@ class H(nn.Module):
 
         # Permute the tensor dimensions using the precomputed indices.
         x = x.take(self.perm_idx, axis=1).take(self.perm_idx, axis=3)
-        
+
         # Reshape the tensor to split it into blocks:
         # New shape: (batch, m, s, m, s, 2) where the last dimension holds [real, imaginary].
         x = x.reshape((-1, m, s, m, s, 2))
         x_re, x_im = x[..., 0], x[..., 1]
-        
+
         # Process the real part with two sets of operations.
         y_re_1 = jnp.einsum('...iaj,ajk->...iak', x_re, hr1)
         y_re_1 = jnp.einsum('abj...i,bjk->abk...i', y_re_1, hr1)
@@ -167,7 +167,7 @@ class H(nn.Module):
         y_re_4 = jnp.einsum('...iaj,ajk->...iak', x_im, hr2)
         y_re_4 = jnp.einsum('abj...i,bjk->abk...i', y_re_4, hi2)
         y_re = y_re_1 + y_re_2 + y_re_3 + y_re_4
-        
+
         # Process the imaginary part similarly.
         y_im_1 = jnp.einsum('...iaj,ajk->...iak', x_im, hr3)
         y_im_1 = jnp.einsum('abj...i,bjk->abk...i', y_im_1, hr3)
@@ -178,7 +178,7 @@ class H(nn.Module):
         y_im_4 = jnp.einsum('...iaj,ajk->...iak', x_re, hr4)
         y_im_4 = jnp.einsum('abj...i,bjk->abk...i', y_im_4, hi4)
         y_im = y_im_1 + y_im_2 + y_im_3 + y_im_4
-        
+
         # Stack real and imaginary parts back into a single tensor.
         y = jnp.stack([y_re, y_im], axis=-1)
 
@@ -193,10 +193,10 @@ class M(nn.Module):
     def __call__(self, x):
         """
         Applies x -> M*xM.
-        
+
         Args:
             x (jnp.ndarray): Input tensor with complex channels.
-            
+
         Returns:
             jnp.ndarray: Transformed tensor.
         """
@@ -227,7 +227,7 @@ class M(nn.Module):
         y_re_4 = jnp.einsum('...iaj,ajk->...iak', x_im, mr2)
         y_re_4 = jnp.einsum('abj...i,bjk->abk...i', y_re_4, mi2)
         y_re = y_re_1 + y_re_2 + y_re_3 + y_re_4
-        
+
         # Process the imaginary part similarly.
         y_im_1 = jnp.einsum('...iaj,ajk->...iak', x_im, mr3)
         y_im_1 = jnp.einsum('abj...i,bjk->abk...i', y_im_1, mr3)
@@ -238,7 +238,7 @@ class M(nn.Module):
         y_im_4 = jnp.einsum('...iaj,ajk->...iak', x_re, mr4)
         y_im_4 = jnp.einsum('abj...i,bjk->abk...i', y_im_4, mi4)
         y_im = y_im_1 + y_im_2 + y_im_3 + y_im_4
-        
+
         # Stack the processed real and imaginary parts.
         y = jnp.stack([y_re, y_im], axis=-1)
         return y
@@ -254,7 +254,7 @@ class G(nn.Module):
 
         Args:
             x (jnp.ndarray): Input tensor.
-            
+
         Returns:
             jnp.ndarray: Transformed and permuted tensor.
         """
@@ -287,7 +287,7 @@ class G(nn.Module):
         y_re_4 = jnp.einsum('...iaj,ajk->...iak', x_im, gr2)
         y_re_4 = jnp.einsum('abj...i,bjk->abk...i', y_re_4, gi2)
         y_re = y_re_1 + y_re_2 + y_re_3 + y_re_4
-        
+
         # Process the imaginary part.
         y_im_1 = jnp.einsum('...iaj,ajk->...iak', x_im, gr3)
         y_im_1 = jnp.einsum('abj...i,bjk->abk...i', y_im_1, gr3)
@@ -316,10 +316,10 @@ class U(nn.Module):
     def __call__(self, x):
         """
         Applies x -> U*xU.
-        
+
         Args:
             x (jnp.ndarray): Input tensor with complex channels.
-            
+
         Returns:
             jnp.ndarray: Real-valued output tensor reshaped to (batch, nx, nx).
         """
@@ -362,13 +362,13 @@ class Fstar(nn.Module):
     NUM_RESNET: int
     cart_mat: jnp.ndarray  # Matrix for converting from polar to Cartesian coordinates.
     r_index: jnp.ndarray   # Index array for selecting specific parts of the input.
-    
+
     def setup(self):
         # Compute overall dimensions.
         self.n = 2**self.L
         self.nx = (2**self.L) * self.s
         self.neta = (2**self.L) * self.s
-        
+
         self.V = V(self.r)
         self.Hs = [H(build_permutation_indices(self.L, l)) for l in range(self.L-1, self.L//2-1, -1)]
         self.Ms = [M() for _ in range(self.NUM_RESNET)]
@@ -382,48 +382,47 @@ class Fstar(nn.Module):
           1. Selection and reshaping of input.
           2. Sequential application of V, H, M, and G modules.
           3. Final upsampling and conversion from polar to Cartesian coordinates.
-          
+
         Args:
             inputs (jnp.ndarray): Input tensor.
-            
+
         Returns:
             jnp.ndarray: Final transformed output in Cartesian coordinates.
         """
         # Select relevant parts of the input using r_index and reshape.
         y = inputs.take(self.r_index, axis=1)
         y = jnp.reshape(y, (-1, self.n, self.s, self.n, self.s, 2))
-        
+
         # Apply the V transformation.
         y = self.V(y)
         # Sequentially apply each H transformation.
         for h in self.Hs:
             y = h(y)
-            
+
         # Reorder blocks using the switch indices. Apply the series of M modules in a residual (skip-connection) fashion.
         y = y.take(self.switch_idx, axis=1).take(self.switch_idx, axis=3)
 
         for m in self.Ms:
             # For the last M module, apply directly; for others, add a residual connection with ReLU.
             y = m(y) if m is self.Ms[-1] else y + nn.relu(m(y))
-            
+
         # Sequentially apply each G module.
         for g in self.Gs:
             y = g(y)
         # Final upsampling and transformation.
         y = self.U(y)
-        
+
         # Extract the diagonal from the spatial dimensions to collapse redundancy.
         y = jnp.diagonal(y, axis1=1, axis2=2)
         output_polar = jnp.reshape(y, (-1, self.nx**2, 1))
-        
+
         # Define a helper function to convert from polar to Cartesian coordinates.
         def polar_to_cart(x):
             x = self.cart_mat @ x
             return jnp.reshape(x, (self.neta, self.neta, 1))
-        
+
         # Apply the conversion to each sample in the batch.
         return jax.vmap(polar_to_cart)(output_polar)
-
 
 class CompressedModel(nn.Module):
     L: int
@@ -433,7 +432,7 @@ class CompressedModel(nn.Module):
     NUM_CONV: int
     cart_mat: jnp.ndarray  # Matrix for polar to Cartesian conversion.
     r_index: jnp.ndarray   # Index array for selecting relevant input data.
-    
+
     def setup(self):
         self.fstar_layer0 = Fstar(L=self.L, s=self.s, r=self.r, NUM_RESNET=self.NUM_RESNET,
                                   cart_mat=self.cart_mat, r_index=self.r_index)
@@ -453,10 +452,10 @@ class CompressedModel(nn.Module):
           3. Passes the concatenated tensor through a series of convolutional layers,
              concatenating intermediate features.
           4. Produces a final single-channel output.
-          
+
         Args:
             inputs (jnp.ndarray): Input tensor with at least 4 dimensions.
-            
+
         Returns:
             jnp.ndarray: The final output of the model.
         """
@@ -464,7 +463,7 @@ class CompressedModel(nn.Module):
         y0 = self.fstar_layer0(inputs[:, :, :, 0])
         y1 = self.fstar_layer1(inputs[:, :, :, 1])
         y2 = self.fstar_layer2(inputs[:, :, :, 2])
-        
+
         # Concatenate outputs along the channel dimension.
         y = jnp.concatenate([y0, y1, y2], axis=-1)
 
@@ -474,7 +473,93 @@ class CompressedModel(nn.Module):
             tmp = nn.relu(tmp)
             # Concatenate new features with existing ones.
             y = jnp.concatenate([y, tmp], axis=-1)
-        
+
+        # Final convolution to combine features into a single channel.
+        y = self.final_conv(y)
+
+        # Return the output, removing the trailing singleton channel dimension.
+        return y[:, :, :, 0]
+
+### (OOT, 2025-10-19) Below this, I've introduced an alternate interface
+# that I hope is a bit more flexible (i.e., set number of frequencies and hyperparameters)
+class CompressedModelFlexible(nn.Module):
+    L: int
+    s: int
+    r: int
+    # NUM_RESNET: int
+    # NUM_CONV: int
+    cart_mat: jnp.ndarray  # Matrix for polar to Cartesian conversion.
+    r_index: jnp.ndarray   # Index array for selecting relevant input data.
+
+    # New and re-named parameters
+    # 3 (hard-coded) -> nk
+    # NUM_RESNET     -> N_resnet_layers
+    # NUM_CONV       -> N_cnn_layers
+    # 6 (hard-coded) -> N_cnn_channels
+    # 3 (hard-coded) -> kernel_size
+    nk: int = 3 # number of frequencies; this is new
+    N_resnet_layers: int = 3
+    N_cnn_layers: int = 9
+    N_cnn_channels: int = 6
+    kernel_size: int = 3
+
+    def setup(self):
+        self.fstar_layers = [
+            Fstar(
+                L=self.L,
+                s=self.s,
+                r=self.r,
+                NUM_RESNET=self.N_resnet_layers,
+                cart_mat=self.cart_mat,
+                r_index=self.r_index
+            )
+            for _ in range(self.nk)
+        ]
+        kernel_shape_2d = (self.kernel_size, self.kernel_size)
+
+        self.convs = [
+            nn.Conv(
+                features=self.N_cnn_channels,
+                kernel_size=kernel_shape_2d,
+                padding='SAME'
+            )
+            for _ in range(self.N_cnn_layers)
+        ]
+        self.final_conv = nn.Conv(features=1, kernel_size=kernel_shape_2d, padding='SAME')
+
+    def __call__(self, inputs):
+        """
+        The forward pass of the CompressedModel:
+          1. Processes three input channels through separate Fstar layers.
+          2. Concatenates the outputs.
+          3. Passes the concatenated tensor through a series of convolutional layers,
+             concatenating intermediate features.
+          4. Produces a final single-channel output.
+
+        Args:
+            inputs (jnp.ndarray): Input tensor with at least 4 dimensions.
+
+        Returns:
+            jnp.ndarray: The final output of the model.
+        """
+        # Process each channel separately using Fstar layers
+        # and concatenate outputs along channel dimension
+        # OOT TODO: if this is too slow, consider pmap?
+        y = jnp.concatenate(
+            [
+                self.fstar_layers[i](inputs[:, :, :, i])
+                for i in range(self.nk)
+            ],
+            axis=-1,
+        )
+
+        # Apply a series of convolutional layers with ReLU activations.
+        for conv_layer in self.convs:
+            tmp = conv_layer(y)
+            tmp = nn.relu(tmp)
+            # Concatenate new features with existing ones.
+            y = jnp.concatenate([y, tmp], axis=-1)
+
         # Final convolution to combine features into a single channel.
         y = self.final_conv(y)
 

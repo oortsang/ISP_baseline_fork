@@ -148,7 +148,7 @@ class UncompressedModelFlexible(nn.Module):
     # New parameters
     nk: int = 3 # number of frequencies; this is new
     # Architecture
-    N_cnn_layers: int = 3
+    N_cnn_layers: int = 9
     N_cnn_channels: int = 6
     kernel_size: int = 3
 
@@ -156,20 +156,18 @@ class UncompressedModelFlexible(nn.Module):
         # Do I need to register these things with Jax for proper functioning?
         self.fstar_layers = [
             Fstar(nx=self.nx, neta=self.neta, cart_mat=self.cart_mat, r_index=self.r_index)
-            for i in range(self.nk)
+            for _ in range(self.nk)
         ]
         kernel_shape_2d = (self.kernel_size, self.kernel_size)
         self.convs = [
-            nn.Conv(features=self.N_cnn_channels, kernel_size=kernel_shape_2d, padding='SAME')
-            for _ in range(self.N_cnn_layers * self.nk) # ???
+            nn.Conv(
+                features=self.N_cnn_channels,
+                kernel_size=kernel_shape_2d,
+                padding='SAME'
+            )
+            for _ in range(self.N_cnn_layers)
         ]
         self.final_conv = nn.Conv(features=1, kernel_size=kernel_shape_2d, padding='SAME')
-
-        # self.fstar_layer0 = Fstar(nx=self.nx, neta=self.neta, cart_mat=self.cart_mat, r_index=self.r_index)
-        # self.fstar_layer1 = Fstar(nx=self.nx, neta=self.neta, cart_mat=self.cart_mat, r_index=self.r_index)
-        # self.fstar_layer2 = Fstar(nx=self.nx, neta=self.neta, cart_mat=self.cart_mat, r_index=self.r_index)
-        # self.convs = [nn.Conv(features=6, kernel_size=(3, 3), padding='SAME') for _ in range(9)]
-        # self.final_conv = nn.Conv(features=1, kernel_size=(3, 3), padding='SAME')
 
 
     def __call__(self, inputs):
@@ -179,6 +177,8 @@ class UncompressedModelFlexible(nn.Module):
         Returns:
             jnp.ndarray: Output tensor after processing through Fstar layers and convolutional layers, with the final channel squeezed.
         """
+        # Process each channel separately using Fstar layers
+        # and concatenate outputs along channel dimension
         y = jnp.concatenate(
             [
                 self.fstar_layers[i](inputs[:, :, :, i])

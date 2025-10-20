@@ -1,6 +1,7 @@
 import functools
-import sys
+import shutil
 import os
+import sys
 import time
 
 os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.9"
@@ -80,9 +81,9 @@ def setup_args() -> argparse.Namespace:
     parser.add_argument(
         "--quadtree_s", default=12, type=int,
     )
-    parser.add_argument(
-        "--quadtree_r", default=3, type=int,
-    )
+    # parser.add_argument(
+    #     "--quadtree_r", default=3, type=int,
+    # )
     tmp_seed = int(float(str(time.perf_counter())[::-1]))
     rng = np.random.default_rng(tmp_seed)
     tag = "0x"+"".join([hex(x)[2:] for x in rng.integers(256, size=6)])
@@ -117,6 +118,8 @@ def setup_args() -> argparse.Namespace:
     parser.add_argument("--noise_seed_list_train",  nargs="*", type=int)
     parser.add_argument("--noise_seed_list_val",    nargs="*", type=int)
     parser.add_argument("--noise_seed_list_test",   nargs="*", type=int)
+    parser.add_argument("--n_resnet_layers",   type=int, default=9)
+    parser.add_argument("--n_resnet_channels",   type=int, default=3)
     parser.add_argument("--n_cnn_layers_2d",   type=int, default=3)
     parser.add_argument("--n_cnn_channels_2d", type=int, default=6)
     parser.add_argument("--kernel_size_2d", type=int, default=5)
@@ -222,7 +225,7 @@ def main(
     # Grab settings from arguments
     L = args.quadtree_l
     s = args.quadtree_s
-    r = args.quadtree_r
+    # r = args.quadtree_r
     downsample_ratio = args.downsample_ratio
     s = s // downsample_ratio
     neta = (2**L) * s
@@ -314,9 +317,11 @@ def main(
     )
 
     print(f"Setting up the model...")
-    N_cnn_layers = args.n_cnn_layers_2d
-    N_cnn_channels = args.n_cnn_channels_2d
-    kernel_size = args.kernel_size_2d
+    N_resnet_layers   = args.n_resnet_layers
+    N_resnet_channels = args.n_resnet_channels
+    N_cnn_layers      = args.n_cnn_layers_2d
+    N_cnn_channels    = args.n_cnn_channels_2d
+    kernel_size       = args.kernel_size_2d
     cart_mat, r_index = utils.load_or_create_mats(
         neta,
         nx,
@@ -327,39 +332,43 @@ def main(
     print(f"cart_mat shape: {cart_mat.shape}")
     print(f"r_index  shape: {r_index.shape}")
     print(f"Created or loaded cart_mat")
-    hyperparam_dict ={
-        "nx": nx,
-        "neta": neta,
+    hyperparam_dict = {
+        "L": L,
+        "s": L,
+        # "nx": nx,
+        # "neta": neta,
         "nk": nk,
+        "N_resnet_layers": N_resnet_layers,
+        "N_resnet_channels": N_resnet_channels,
         "N_cnn_layers": N_cnn_layers,
         "N_cnn_channels": N_cnn_channels,
         "kernel_size": kernel_size,
+        "lr_init": args.lr_init,
     }
-    # core_module = Uncompressed.UncompressedModelFlexible(
-    #     nx = nx,
-    #     neta = neta,
+    core_module = Compressed.CompressedModel(
+        L=L,
+        s=s,
+        r=N_resnet_channels,
+        cart_mat = cart_mat,
+        r_index = r_index,
+        # New parameters
+        NUM_RESNET=N_resnet_layers,
+        NUM_CONV=N_cnn_layers,
+    )
+    # core_module = Compressed.CompressedModelFlexible(
+    #     L=L,
+    #     s=s,
+    #     r=N_resnet_channels,
     #     cart_mat = cart_mat,
     #     r_index = r_index,
     #     # New parameters
     #     nk=nk,
+    #     N_resnet_layers=N_resnet_layers,
     #     N_cnn_layers=N_cnn_layers,
-    #     N_cnn_channels=N_cnn_channels,
     #     kernel_size=kernel_size,
+    #     # NUM_RESNET=6,
+    #     # NUM_CONV=9,
     # )
-    core_module = Compressed.CompressedModel(
-        L=L,
-        s=s,
-        r=r,
-        cart_mat = cart_mat,
-        r_index = r_index,
-        # New parameters
-        # nk=nk,
-        # N_cnn_layers=N_cnn_layers,
-        # N_cnn_channels=N_cnn_channels,
-        # kernel_size=kernel_size,
-        NUM_RESNET=6,
-        NUM_CONV=9,
-    )
 
     print(f"nx: {nx}; neta: {neta}")
     print(f"Input shape: {train_scatter[0].shape}")
@@ -375,6 +384,9 @@ def main(
     print(f"Training...")
     num_train_steps = NTRAIN * args.n_epochs // 16  #@param
     workdir = os.path.join(os.path.abspath(''), args.work_dir)
+    if os.path.exists(workdir):
+        shutil.rmtree(workdir)
+
     initial_lr = args.lr_init #@param
     peak_lr = 5e-3 #@pawram
     warmup_steps = num_train_steps // 20  #@param
@@ -482,53 +494,6 @@ def main(
         batch_size=test_batch_size,
     )
 
-    # val_errors_rrmse = []
-    # val_errors_rel_l2 = []
-    # val_errors_rapsd = []
-    # pred_eta = np.zeros(test_eta.shape)
-
-    # rrmse = functools.partial(
-    #     metrics.mean_squared_error,
-    #     sum_axes=(-1, -2),
-    #     relative=True,
-    #     squared=False,
-    # )
-    # rel_l2 = functools.partial(
-    #     l2_error,
-    #     l2_axes=(-1, -2),
-    #     relative=True,
-    #     squared=False,
-    # )
-
-    # for b, batch in enumerate(val_dloader):
-    #     pred = inference_fn(batch["scatter"])
-    #     start_idx = b*test_batch_size
-    #     end_idx   = min((b+1)*test_batch_size, pred_eta.shape[0])
-    #     pred_eta[start_idx:end_idx, :, :] = pred
-    #     true = batch["eta"]
-    #     val_errors_rrmse.append(rrmse(pred=pred, true=true))
-    #     val_errors_rel_l2.append(rel_l2(pred=pred, true=true))
-    #     for i in range(true.shape[0]):
-    #         val_errors_rapsd.append(np.abs(np.log(
-    #             rapsd(pred[i],fft_method=np.fft)
-    #             /rapsd(true[i],fft_method=np.fft)
-    #         )))
-
-    # # val_rel_l2_mean = np.mean(val_errors_rel_l2)
-    # # val_rrmse_mean  = np.mean(val_errors_rrmse)
-    # # print(f"Mean rel l2 error: {val_rel_l2_mean*100:.3f}%")
-    # # print('Relative root-mean-square error = %.3f' % (val_rrmse_mean*100), '%')
-    # # print('Mean energy log ratio = %.3f' % np.mean(val_errors_rapsd))
-    # val_errors_rrmse  = np.array(val_errors_rrmse)
-    # val_errors_rel_l2 = np.concatenate(val_errors_rel_l2, axis=0)
-    # val_errors_rapsd  = np.concatenate(val_errors_rapsd, axis=0)
-
-    # val_rel_l2_mean = np.mean(val_errors_rel_l2)
-    # val_rrmse_mean  = np.mean(val_errors_rrmse)
-    # print(f"Mean rel l2 error: {val_rel_l2_mean*100:.3f}%")
-    # print('Relative root-mean-square error = %.3f' % (val_rrmse_mean*100), '%')
-    # print('Mean energy log ratio = %.3f' % np.mean(val_errors_rapsd))
-
     x_vals = train_mfisnet_dd["x_vals"]
     loss_fn_dict = get_loss_fns(["rrmse", "rel_l2", "psnr"])
     dset_name_list = ["train", "val", "test"]
@@ -538,6 +503,8 @@ def main(
         (val_scatter,   val_eta),
         (test_scatter,  test_eta),
     ]
+    all_loss_strs = {loss_name: f"" for loss_name in loss_fn_dict.keys()}
+
     for i, dset in enumerate(dset_name_list):
         # dataset = dataset_list[i]
         dset_scatter, dset_eta = dataset_list[i]
@@ -553,10 +520,13 @@ def main(
             loss_fn_dict=loss_fn_dict,
             return_sample_losses=False
         )
-        # TODO: think about how to display this more nicely...
         print(f"dset {dset} losses: {dset_loss_vals}")
-
-        # TODO: save outputs to disk (if requested)
+        for loss_name in loss_fn_dict.keys():
+            loss_mean = dset_loss_vals[f"{loss_name}_mean"]
+            loss_std  = dset_loss_vals[f"{loss_name}_std"]
+            delim_str = " " if i > 0 else ""
+            all_loss_strs[loss_name] += f"{delim_str}{loss_mean:.6e}±{loss_std:.4e}"
+        
         if args.output_pred_save:
             print(f"Saving predictions to disk")
             dset_output_pred_dir = os.path.join(
@@ -572,6 +542,10 @@ def main(
             )
         else:
             print(f"Not saving predictions to disk")
+
+    # for loss_name in loss_fn_dict.keys():
+    #     print(f"Overall {loss_name}: {all_loss_strs[loss_name]}")
+
 
 if __name__ == "__main__":
     a = setup_args()

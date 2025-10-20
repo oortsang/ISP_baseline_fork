@@ -1,5 +1,6 @@
 import functools
 import os
+import shutil
 import sys
 import time
 
@@ -120,7 +121,7 @@ def setup_args() -> argparse.Namespace:
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--log_batch_size", type=int, default=100, help="batch size while logging")
     parser.add_argument("--n_epochs", type=int, default=100)
-    parser.add_argument("--lr_init", type=float, default=1e-5)
+    parser.add_argument("--lr_init",  type=float, default=1e-5)
     # parser.add_argument("--eta_min_base", type=float, default=1e-4)
     # parser.add_argument("--momentum", type=float, default=0.0)
     # parser.add_argument("--weight_decay_base", type=float, default=0.0)
@@ -313,13 +314,14 @@ def main(
         save_if_created=True,
     )
     print(f"Created or loaded cart_mat")
-    hyperparam_dict ={
+    hyperparam_dict = {
         "nx": nx,
         "neta": neta,
         "nk": nk,
         "N_cnn_layers": N_cnn_layers,
         "N_cnn_channels": N_cnn_channels,
         "kernel_size": kernel_size,
+        "lr_init": args.lr_init,
     }
 
     core_module = Uncompressed.UncompressedModelFlexible(
@@ -351,6 +353,9 @@ def main(
     log_batches_per_epoch = args.n_epochs // args.log_batch_size
     # workdir = os.path.abspath('') + "/tmp/Uncompressed10squaresDev"  #@param
     workdir = os.path.join(os.path.abspath(''), args.work_dir)
+    if os.path.exists(workdir):
+        shutil.rmtree(workdir)
+
     # initial_lr = 1e-5 #@param
     initial_lr = args.lr_init
     peak_lr = 5e-3 #@pawram
@@ -471,6 +476,8 @@ def main(
         (val_scatter,   val_eta),
         (test_scatter,  test_eta),
     ]
+    all_loss_strs = {loss_name: f"" for loss_name in loss_fn_dict.keys()}
+
     for i, dset in enumerate(dset_name_list):
         # dataset = dataset_list[i]
         dset_scatter, dset_eta = dataset_list[i]
@@ -486,10 +493,13 @@ def main(
             loss_fn_dict=loss_fn_dict,
             return_sample_losses=False
         )
-        # TODO: think about how to display this more nicely...
         print(f"dset {dset} losses: {dset_loss_vals}")
+        for loss_name in loss_fn_dict.keys():
+            loss_mean = dset_loss_vals[f"{loss_name}_mean"]
+            loss_std  = dset_loss_vals[f"{loss_name}_std"]
+            delim_str = " " if i > 0 else ""
+            all_loss_strs[loss_name] += f"{delim_str}{loss_mean:.6e}±{loss_std:.4e}"
 
-        # TODO: save outputs to disk (if requested)
         if args.output_pred_save:
             print(f"Saving predictions to disk")
             dset_output_pred_dir = os.path.join(
@@ -506,7 +516,8 @@ def main(
         else:
             print(f"Not saving predictions to disk")
 
-
+    for loss_name in loss_fn_dict.keys():
+        print(f"Overall {loss_name}: {all_loss_strs[loss_name]}")
 
 if __name__ == "__main__":
     a = setup_args()
