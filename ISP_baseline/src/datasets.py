@@ -129,3 +129,12 @@ def setup_tf_dataset(
     dataloader = dataset.as_numpy_iterator()
 
     return dataset, dataloader
+
+def get_io_mean_std(scatter: np.ndarray, eta: np.ndarray):
+    """Get the input/output mean/stdev"""
+    sc_axes = tuple(list(np.arange(scatter.ndim-1)))
+    scatter_mean = np.mean(scatter, axis=sc_axes)
+    scatter_std  = np.std(scatter, axis=sc_axes)
+    eta_mean = np.mean(eta)
+    eta_std  = np.std(eta)
+    return scatter_mean, scatter_std, eta_mean, eta_std

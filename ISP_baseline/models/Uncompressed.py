@@ -152,6 +152,14 @@ class UncompressedModelFlexible(nn.Module):
     N_cnn_channels: int = 6
     kernel_size: int = 3
 
+    # I/O normalization?
+    in_norm:  bool = False
+    out_norm: bool = False
+    in_mean:  jnp.array = None
+    in_std:   jnp.array = None
+    out_mean: jnp.array = None
+    out_std:  jnp.array = None
+
     def setup(self):
         # Do I need to register these things with Jax for proper functioning?
         self.fstar_layers = [
@@ -169,7 +177,6 @@ class UncompressedModelFlexible(nn.Module):
         ]
         self.final_conv = nn.Conv(features=1, kernel_size=kernel_shape_2d, padding='SAME')
 
-
     def __call__(self, inputs):
         """
         Args:
@@ -177,6 +184,9 @@ class UncompressedModelFlexible(nn.Module):
         Returns:
             jnp.ndarray: Output tensor after processing through Fstar layers and convolutional layers, with the final channel squeezed.
         """
+        if self.in_norm:
+            inputs = (inputs - self.in_mean) / self.in_std # will the axes work out?
+
         # Process each channel separately using Fstar layers
         # and concatenate outputs along channel dimension
         y = jnp.concatenate(
@@ -192,4 +202,10 @@ class UncompressedModelFlexible(nn.Module):
             y = jnp.concatenate([y, tmp], axis=-1)
 
         y = self.final_conv(y)
-        return y[:, :, :, 0]
+        output = y[:, :, :, 0]
+
+        if self.out_norm:
+            output = (output - self.out_mean) / self.out_std # will the axes work out?
+
+        return output
+

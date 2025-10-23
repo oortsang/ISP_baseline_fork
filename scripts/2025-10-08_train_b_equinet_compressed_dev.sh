@@ -3,6 +3,7 @@
 dataset_dir=/home-nfs/oortsang/rlc-repo/dataset
 
 echo "Please ensure the jaxisp-v3 environment is active before running this script!"
+export JAX_TRACEBACK_FILTERING=off
 
 # --data_input_nus 2 5 10 \
 python train_B_EquiNet_Compressed.py \
@@ -21,7 +22,7 @@ python train_B_EquiNet_Compressed.py \
 --n_resnet_channels 3 \
 --n_cnn_layers_2d 3 \
 --n_cnn_channels_2d 9 \
---kernel_size_2d 5 \
+--kernel_size_2d 3 \
 --n_epochs 100 \
 --batch_size 16 \
 --log_batch_size 20 \

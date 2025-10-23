@@ -503,6 +503,14 @@ class CompressedModelFlexible(nn.Module):
     N_cnn_channels: int = 6
     kernel_size: int = 3
 
+    # I/O normalization?
+    in_norm:  bool = False
+    out_norm: bool = False
+    in_mean:  jnp.ndarray = None
+    in_std:   jnp.ndarray = None
+    out_mean: jnp.ndarray = None
+    out_std:  jnp.ndarray = None
+
     def setup(self):
         self.fstar_layers = [
             Fstar(
@@ -542,6 +550,9 @@ class CompressedModelFlexible(nn.Module):
         Returns:
             jnp.ndarray: The final output of the model.
         """
+        if self.in_norm:
+            inputs = (inputs - self.in_mean) / self.in_std # will the axes work out?
+
         # Process each channel separately using Fstar layers
         # and concatenate outputs along channel dimension
         # OOT TODO: if this is too slow, consider pmap?
@@ -564,4 +575,9 @@ class CompressedModelFlexible(nn.Module):
         y = self.final_conv(y)
 
         # Return the output, removing the trailing singleton channel dimension.
-        return y[:, :, :, 0]
+        output = y[:, :, :, 0]
+
+        if self.out_norm:
+            output = (output - self.out_mean) / self.out_std # will the axes work out?
+
+        return output

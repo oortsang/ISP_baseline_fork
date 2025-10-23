@@ -1,12 +1,12 @@
 ---
 definitions:
-  command: python train_EquiNet_Uncompressed.py
-  template: base_template_train_equinet_uncompressed.jinja
+  command: python train_B_EquiNet_Compressed.py
+  template: base_template_train_b_equinet_compressed.jinja
   copy_to_item: true
   default_arguments:
     mem: "50G"
     logs_folder: logs/train_wben
-    partition: "willett-gpu,gpu"
+    partition: "willett-gpu,low-gpu,gpu"
     num_nodes: 1
     num_cpu: 2
     num_gpu: 1
@@ -18,7 +18,7 @@ definitions:
     !SLURMQueue
       jobs_folder: jobs/train_wben
       job_name_key: log_name
-      fake_submission: true
+      fake_submission: false
       overwrite_scripts: true
   constants:
     base_dir: &BASE_DIR "/home-nfs/oortsang/ISP_baselines_fork"
@@ -29,27 +29,27 @@ definitions:
     num_test:  &NUM_TEST   1000
     N_x: &N_X 192
     N_r: &N_R 192
+    quadtree_l: &QUADTREE_L 4
+    quadtree_s: &QUADTREE_S 12
 
 arguments:
   - !Scalar
     name: run_date
-    value: 2025-10-19
+    value: 2025-10-22
     metadata_rules: [ !SaveValueInMetadata { path: run_date } ]
 
   - !Scalar
     name: part_run_name
-    value: "wb_equinet_gridsearch"
+    value: "wb_bequinet_gridsearch"
     metadata_rules: [ !SaveValueInMetadata { path: part_run_name } ]
 
   - !Scalar
     name: data_input_nus
-    # value: "(1,2,3,4,5,6,7,8,9,10)"
-    value: "(2,5,10)"
+    value: "(1,2,3,4,5,6,7,8,9,10)"
 
   - !Scalar
     name: N_k
-    # value: 10
-    value: 3
+    value: 10
     metadata_rules: [ !SaveValueInMetadata { path: N_k } ]
 
   - !Scalar
@@ -78,11 +78,13 @@ arguments:
 
   - !Scalar { name: n_x, value: *N_X, prefix: "--neta" }
   - !Scalar { name: n_r, value: *N_R, prefix: "--nx" }
+  - !Scalar { name: quadtree_l, value: *QUADTREE_L, prefix: "--quadtree_l" }
+  - !Scalar { name: quadtree_s, value: *QUADTREE_S, prefix: "--quadtree_s" }
   - !Scalar { name: blur_sigma, value: 0.5, prefix: "--blur_sigma" }
   - !Scalar { name: downsample_ratio, value: 1, prefix: "--downsample_ratio" }
   - !Scalar { name: n_epochs, value: 300, prefix: "--n_epochs" }
   - !Scalar { name: batch_size, value: 16, prefix: "--batch_size" }
-  - !Scalar { name: log_batch_size, value: 100, prefix: "--log_batch_size" }
+  - !Scalar { name: log_batch_size, value: 16, prefix: "--log_batch_size" }
   - !Scalar { name: debug, value: "--debug"}
 
   - !Scalar { name: output_pred_save, value: "false", prefix: "--output_pred_save" }
@@ -138,21 +140,45 @@ arguments:
 
 
   # Architecture hyperparameters
+  # - !Range
+  #   name: quadtree_r
+  #   prefix: "--quadtree_r"
+  #   values: [ 3 ]
+  #   metadata_rules: [ !SaveValueInMetadata { path: quadtree_r } ]
+
+  - !Range
+    name: n_resnet_layers
+    prefix: "--n_resnet_layers"
+    values: [ 6 ]
+    metadata_rules: [ !SaveValueInMetadata { path: n_resnet_layers } ]
+  - !Range
+    name: n_resnet_channels
+    prefix: "--n_resnet_channels"
+    values: [ 3, 6 ]
+    metadata_rules: [ !SaveValueInMetadata { path: n_resnet_channels } ]
   - !Range
     name: n_cnn_layers_2d
     prefix: "--n_cnn_layers_2d"
-    values: [ 3, 6, 9 ]
+    values: [ 3, 9 ]
     metadata_rules: [ !SaveValueInMetadata { path: n_cnn_layers_2d } ]
   - !Range
     name: n_cnn_channels_2d
     prefix: "--n_cnn_channels_2d"
-    values: [ 6, 12 ]
+    values: [ 6, 12, 24, 36 ]
     metadata_rules: [ !SaveValueInMetadata { path: n_cnn_channels_2d } ]
   - !Range
     name: kernel_size_2d
     prefix: "--kernel_size_2d"
     values: [ 3, 5 ]
     metadata_rules: [ !SaveValueInMetadata { path: kernel_size_2d } ]
+
+  # Group with architecture since it's like deciding whether to have a
+  # mean/normalization layer
+  - !Range
+    name: io_norm
+    prefix: "--io_norm"
+    values: [ "false", "true" ]
+    metadata_rules: [ !SaveValueInMetadata { path: io_norm } ]
 
   # Optimization hyperparameters
   - !Range
@@ -174,14 +200,18 @@ arguments:
     ]
     metadata_rules: [ !SaveValueInMetadata { path: whole_run_name } ]
 
+
   - !ArgumentFromMetadata
     name: parameters
-    format_rule: "arch_{ncl2d}_{ncc2d}_{ks2d}_opt_{lr}"
+    format_rule: "arch_{nrl}_{nrc}_{ncl2d}_{ncc2d}_{ks2d}_{io}_opt_{lr}"
     sources: [
+      { path: n_resnet_layers,   destination: nrl },
+      { path: n_resnet_channels, destination: nrc },
       { path: n_cnn_layers_2d,   destination: ncl2d },
       { path: n_cnn_channels_2d, destination: ncc2d },
       { path: kernel_size_2d,    destination: ks2d },
       { path: lr_init,           destination: lr },
+      { path: io_norm,           destination: io },
     ]
     metadata_rules: [ !SaveValueInMetadata { path: parameters } ]
 
@@ -213,6 +243,7 @@ arguments:
   - !ArgumentFromMetadata
     name: model_name
     format_rule: "{run_date}_{whole_run_name}_{parameters}"
+    # format_rule: "MODEL_NAME_TMP"
     sources: [
       { path: run_date,       destination: run_date },
       { path: whole_run_name, destination: whole_run_name },

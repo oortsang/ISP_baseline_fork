@@ -5,6 +5,7 @@
 #SBATCH --mem={{mem}}
 #SBATCH --gpus={{num_gpu}}
 #SBATCH --gres=gpu:{{num_gpu}}
+#SBATCH --constraint={{min_vram}}
 #SBATCH --cpus-per-task={{num_cpu}}
 #SBATCH --nodes={{num_nodes}}
 #SBATCH --time={{job_walltime}}
@@ -39,6 +40,7 @@ NU_NAME=$(echo ${NU_ARG} | sed "s/ /_/g")
 {{ n_cnn_channels_2d }} \
 {{ kernel_size_2d }} \
 {{ lr_init }} \
+{{ io_norm }} \
 {{ n_epochs }} \
 {{ batch_size }} \
 {{ log_batch_size }} \

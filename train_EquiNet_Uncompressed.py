@@ -4,8 +4,8 @@ import shutil
 import sys
 import time
 
-os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.90"
-os.environ["JAX_TRACEBACK_FILTERING"] = "off"
+os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.98"
+# os.environ["JAX_TRACEBACK_FILTERING"] = "off"
 import numpy as np
 import jax
 import jax.numpy as jnp
@@ -43,6 +43,7 @@ from ISP_baseline.src.data_io import (
 from ISP_baseline.src.datasets import (
     convert_mfisnet_data_dict,
     setup_tf_dataset,
+    get_io_mean_std,
 )
 from ISP_baseline.src.more_metrics import (
     l2_error
@@ -122,10 +123,8 @@ def setup_args() -> argparse.Namespace:
     parser.add_argument("--log_batch_size", type=int, default=100, help="batch size while logging")
     parser.add_argument("--n_epochs", type=int, default=100)
     parser.add_argument("--lr_init",  type=float, default=1e-5)
-    # parser.add_argument("--eta_min_base", type=float, default=1e-4)
-    # parser.add_argument("--momentum", type=float, default=0.0)
-    # parser.add_argument("--weight_decay_base", type=float, default=0.0)
-    parser.add_argument("--n_epochs_per_log", type=int, default=5)
+    parser.add_argument("--io_norm", choices=bool_choices, default="false")
+    parser.add_argument("--n_epochs_per_log", type=int, default=5) # currently unused
     parser.add_argument(
         "--noise_to_signal_ratio", default=None, type=float
     )  # train and test with noise
@@ -161,6 +160,7 @@ def setup_args() -> argparse.Namespace:
     bool_args = [
         "use_noise_seed",
         "output_pred_save",
+        "io_norm",
     ]
     # Process the boolean arguments from strings
     for bool_arg in bool_args:
@@ -256,6 +256,13 @@ def main(
     train_scatter = train_wb_dd["scatter"]
     print(f"train_eta     shape: {train_eta.shape}")
     print(f"train_scatter shape: {train_scatter.shape}")
+    (
+    train_scatter_mean,
+        train_scatter_std,
+        train_eta_mean,
+        train_eta_std
+    ) = get_io_mean_std(train_scatter, train_eta)
+
     train_dataset, train_dloader = setup_tf_dataset(
         train_eta,
         train_scatter,
@@ -323,6 +330,7 @@ def main(
         "kernel_size": kernel_size,
         "lr_init": args.lr_init,
     }
+    logging.info(f"Received hyperparameters: {hyperparam_dict}")
 
     core_module = Uncompressed.UncompressedModelFlexible(
         nx = nx,
@@ -334,6 +342,13 @@ def main(
         N_cnn_layers=N_cnn_layers,
         N_cnn_channels=N_cnn_channels,
         kernel_size=kernel_size,
+        # I/O normalization
+        in_norm=args.io_norm,
+        out_norm=args.io_norm,
+        in_mean=jnp.array(train_scatter_mean),
+        in_std=jnp.array(train_scatter_std),
+        out_mean=jnp.array(train_eta_mean),
+        out_std=jnp.array(train_eta_std),
     )
 
     print(f"nx: {nx}; neta: {neta}")

@@ -6,7 +6,7 @@ definitions:
   default_arguments:
     mem: "50G"
     logs_folder: logs/train_wben
-    partition: "willett-gpu,gpu"
+    partition: "low-gpu,willett-gpu,gpu"
     num_nodes: 1
     num_cpu: 2
     num_gpu: 1
@@ -18,7 +18,7 @@ definitions:
     !SLURMQueue
       jobs_folder: jobs/train_wben
       job_name_key: log_name
-      fake_submission: true
+      fake_submission: false
       overwrite_scripts: true
   constants:
     base_dir: &BASE_DIR "/home-nfs/oortsang/ISP_baselines_fork"
@@ -33,7 +33,7 @@ definitions:
 arguments:
   - !Scalar
     name: run_date
-    value: 2025-10-19
+    value: 2025-10-22
     metadata_rules: [ !SaveValueInMetadata { path: run_date } ]
 
   - !Scalar
@@ -43,13 +43,13 @@ arguments:
 
   - !Scalar
     name: data_input_nus
-    # value: "(1,2,3,4,5,6,7,8,9,10)"
-    value: "(2,5,10)"
+    value: "(1,2,3,4,5,6,7,8,9,10)"
+    # value: "(2,5,10)"
 
   - !Scalar
     name: N_k
-    # value: 10
-    value: 3
+    value: 10
+    # value: 3
     metadata_rules: [ !SaveValueInMetadata { path: N_k } ]
 
   - !Scalar
@@ -82,7 +82,7 @@ arguments:
   - !Scalar { name: downsample_ratio, value: 1, prefix: "--downsample_ratio" }
   - !Scalar { name: n_epochs, value: 300, prefix: "--n_epochs" }
   - !Scalar { name: batch_size, value: 16, prefix: "--batch_size" }
-  - !Scalar { name: log_batch_size, value: 100, prefix: "--log_batch_size" }
+  - !Scalar { name: log_batch_size, value: 16, prefix: "--log_batch_size" }
   - !Scalar { name: debug, value: "--debug"}
 
   - !Scalar { name: output_pred_save, value: "false", prefix: "--output_pred_save" }
@@ -146,13 +146,22 @@ arguments:
   - !Range
     name: n_cnn_channels_2d
     prefix: "--n_cnn_channels_2d"
-    values: [ 6, 12 ]
+    values: [ 6, 12, 24, 36 ]
     metadata_rules: [ !SaveValueInMetadata { path: n_cnn_channels_2d } ]
   - !Range
     name: kernel_size_2d
     prefix: "--kernel_size_2d"
     values: [ 3, 5 ]
     metadata_rules: [ !SaveValueInMetadata { path: kernel_size_2d } ]
+
+  # Group with architecture since it's like deciding whether to have a
+  # mean/normalization layer
+  - !Range
+    name: io_norm
+    prefix: "--io_norm"
+    values: [ "false", "true" ]
+    metadata_rules: [ !SaveValueInMetadata { path: io_norm } ]
+
 
   # Optimization hyperparameters
   - !Range
@@ -176,12 +185,13 @@ arguments:
 
   - !ArgumentFromMetadata
     name: parameters
-    format_rule: "arch_{ncl2d}_{ncc2d}_{ks2d}_opt_{lr}"
+    format_rule: "arch_{ncl2d}_{ncc2d}_{ks2d}_{io}_opt_{lr}"
     sources: [
       { path: n_cnn_layers_2d,   destination: ncl2d },
       { path: n_cnn_channels_2d, destination: ncc2d },
       { path: kernel_size_2d,    destination: ks2d },
       { path: lr_init,           destination: lr },
+      { path: io_norm,           destination: io },
     ]
     metadata_rules: [ !SaveValueInMetadata { path: parameters } ]
 
