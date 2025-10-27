@@ -24,6 +24,8 @@ definitions:
     base_dir: &BASE_DIR "/home-nfs/oortsang/ISP_baselines_fork"
     dataset_dir: &DATASET_DIR "/home-nfs/oortsang/rlc-repo/dataset"
     pred_dir_base: &PRED_DIR_BASE "/home-nfs/oortsang/ISP_baselines_fork/data/predictions"
+    conda_dir: &CONDA_DIR "/share/data/willett-group/oortsang/miniconda"
+    conda_env: &CONDA_ENV "jaxisp-v3"
     num_train: &NUM_TRAIN  1000
     num_val:   &NUM_VAL    1000
     num_test:  &NUM_TEST   1000
@@ -75,6 +77,8 @@ arguments:
     name: pred_dir_base
     value: *PRED_DIR_BASE
     metadata_rules:  [ !SaveValueInMetadata { path: pred_dir_base } ]
+  - !Scalar { name: conda_dir, value: *CONDA_DIR }
+  - !Scalar { name: conda_env, value: *CONDA_ENV }
 
   - !Scalar { name: n_x, value: *N_X, prefix: "--neta" }
   - !Scalar { name: n_r, value: *N_R, prefix: "--nx" }
@@ -159,7 +163,8 @@ arguments:
   - !Range
     name: io_norm
     prefix: "--io_norm"
-    values: [ "false", "true" ]
+    # values: [ "false", "true" ]
+    values: [ "true" ]
     metadata_rules: [ !SaveValueInMetadata { path: io_norm } ]
 
 

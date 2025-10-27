@@ -63,9 +63,15 @@ def d_rs_to_scatter(
 def q_cart_to_eta(
     q_cart: np.ndarray,
     blur_sigma: float=0.5,
-    downsample_ratio: int = 1,
+    downsample_ratio: int=1,
+    flip_axes: bool=False,
 ) -> np.ndarray:
     """Sends q_cart to eta, and for simplicity also apply blurring here"""
+    q_cart = (
+        q_cart.transpose(0,2,1) # TODO: check if this works...
+        if flip_axes
+        else q_cart
+    )
     q_blurred = apply_blur_to_q(q_cart, blur_sigma=blur_sigma)
     ds_slice = np.s_[..., ::downsample_ratio, ::downsample_ratio]
     eta = q_blurred[ds_slice] # is it this simple?
@@ -77,6 +83,7 @@ def convert_mfisnet_data_dict(
     scatter_as_real: bool=True,
     downsample_ratio: int=1,
     real_imag_axis: int=1,
+    flip_scobj_axes: bool=False,
 ) -> dict:
     """Converts a mfisnet-style data dictionary for use with
     the wide-band equivariant network models
@@ -86,7 +93,8 @@ def convert_mfisnet_data_dict(
     eta = q_cart_to_eta(
         q_cart,
         blur_sigma=blur_sigma,
-        downsample_ratio=downsample_ratio
+        downsample_ratio=downsample_ratio,
+        flip_axes=flip_scobj_axes,
     )
     scatter = d_rs_to_scatter(
         d_rs,

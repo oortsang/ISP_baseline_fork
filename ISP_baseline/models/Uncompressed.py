@@ -83,21 +83,23 @@ class Fstar(nn.Module):
 
         return jax.vmap(polar_to_cart)(output_polar)
 
-        # (OOT, 2025-10-09) Can we un-vectorize it to reduce VRAM usage?
-        # No, that doesn't seem to do anything
-        # return jnp.stack([polar_to_cart(output_i) for output_i in output_polar], axis=0)
-
-
 class UncompressedModel(nn.Module):
     nx: int
     neta: int
     cart_mat: jnp.ndarray
     r_index: np.ndarray
+    grad_checkpoint: bool = True
 
     def setup(self):
-        self.fstar_layer0 = Fstar(nx=self.nx, neta=self.neta, cart_mat=self.cart_mat, r_index=self.r_index)
-        self.fstar_layer1 = Fstar(nx=self.nx, neta=self.neta, cart_mat=self.cart_mat, r_index=self.r_index)
-        self.fstar_layer2 = Fstar(nx=self.nx, neta=self.neta, cart_mat=self.cart_mat, r_index=self.r_index)
+        # Checkpoint if requested using flax/linen
+        Fstar_chkpt = (
+            nn.remat(Fstar)
+            if self.grad_checkpoint
+            else Fstar
+        )
+        self.fstar_layer0 = Fstar_chkpt(nx=self.nx, neta=self.neta, cart_mat=self.cart_mat, r_index=self.r_index)
+        self.fstar_layer1 = Fstar_chkpt(nx=self.nx, neta=self.neta, cart_mat=self.cart_mat, r_index=self.r_index)
+        self.fstar_layer2 = Fstar_chkpt(nx=self.nx, neta=self.neta, cart_mat=self.cart_mat, r_index=self.r_index)
         self.convs = [nn.Conv(features=6, kernel_size=(3, 3), padding='SAME') for _ in range(9)]
         self.final_conv = nn.Conv(features=1, kernel_size=(3, 3), padding='SAME')
 
@@ -151,6 +153,7 @@ class UncompressedModelFlexible(nn.Module):
     N_cnn_layers: int = 9
     N_cnn_channels: int = 6
     kernel_size: int = 3
+    grad_checkpoint: bool = True
 
     # I/O normalization?
     in_norm:  bool = False
@@ -161,9 +164,19 @@ class UncompressedModelFlexible(nn.Module):
     out_std:  jnp.array = None
 
     def setup(self):
-        # Do I need to register these things with Jax for proper functioning?
+        # Checkpoint if requested using flax/linen
+        Fstar_chkpt = (
+            nn.remat(Fstar)
+            if self.grad_checkpoint
+            else Fstar
+        )
         self.fstar_layers = [
-            Fstar(nx=self.nx, neta=self.neta, cart_mat=self.cart_mat, r_index=self.r_index)
+            Fstar_chkpt(
+                nx=self.nx,
+                neta=self.neta,
+                cart_mat=self.cart_mat,
+                r_index=self.r_index,
+            )
             for _ in range(self.nk)
         ]
         kernel_shape_2d = (self.kernel_size, self.kernel_size)
@@ -205,7 +218,6 @@ class UncompressedModelFlexible(nn.Module):
         output = y[:, :, :, 0]
 
         if self.out_norm:
-            output = (output - self.out_mean) / self.out_std # will the axes work out?
+            output = (output + self.out_mean) * self.out_std # will the axes work out?
 
         return output
-

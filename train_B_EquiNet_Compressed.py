@@ -124,6 +124,7 @@ def setup_args() -> argparse.Namespace:
     parser.add_argument("--n_cnn_layers_2d",   type=int, default=3)
     parser.add_argument("--n_cnn_channels_2d", type=int, default=6)
     parser.add_argument("--kernel_size_2d", type=int, default=5)
+    parser.add_argument("--grad_checkpoint", choices=bool_choices, default="true")
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--log_batch_size", type=int, default=100, help="batch size while logging")
     parser.add_argument("--n_epochs", type=int, default=100)
@@ -174,6 +175,7 @@ def setup_args() -> argparse.Namespace:
         "use_noise_seed",
         "output_pred_save",
         "io_norm",
+        "grad_checkpoint",
     ]
     # Process the boolean arguments from strings
     for bool_arg in bool_args:
@@ -264,6 +266,7 @@ def main(
         scatter_as_real=True,
         real_imag_axis=2,
         downsample_ratio=downsample_ratio,
+        flip_scobj_axes=True,
     )
 
     train_eta = train_wb_dd["eta"]
@@ -305,6 +308,7 @@ def main(
         scatter_as_real=True,
         real_imag_axis=2,
         downsample_ratio=downsample_ratio,
+        flip_scobj_axes=True,
     )
     # Try downsampling since the sparsepolartocartesian step is so slow :((
     val_eta     = val_wb_dd["eta"]
@@ -374,6 +378,7 @@ def main(
         N_cnn_layers=N_cnn_layers,
         N_cnn_channels=N_cnn_channels,
         kernel_size=kernel_size,
+        grad_checkpoint=args.grad_checkpoint,
         # NUM_RESNET=6,
         # NUM_CONV=9,
         # I/O normalization
@@ -495,6 +500,7 @@ def main(
         real_imag_axis=2,
         blur_sigma=blur_sigma,
         downsample_ratio=downsample_ratio,
+        flip_scobj_axes=True,
     )
 
     # Try downsampling since the sparsepolartocartesian step is so slow :((

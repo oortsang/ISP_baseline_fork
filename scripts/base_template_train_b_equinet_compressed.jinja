@@ -21,6 +21,7 @@ echo "    JOB ID: ${SLURM_JOB_ID}"
 echo "    Host list: ${SLURM_JOB_NODELIST}"
 echo "    CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES}"
 nvidia-smi -L
+source {{ conda_dir }}/bin/activate {{ conda_env }}
 which python
 
 NU_ARG=$(echo "{{ data_input_nus }}" | sed "s/(\|)\|\| //g" | sed "s/,/ /g")
@@ -43,6 +44,7 @@ NU_NAME=$(echo ${NU_ARG} | sed "s/ /_/g")
 {{ n_cnn_layers_2d }} \
 {{ n_cnn_channels_2d }} \
 {{ kernel_size_2d }} \
+{{ grad_checkpoint }} \
 {{ io_norm }} \
 {{ lr_init }} \
 {{ n_epochs }} \

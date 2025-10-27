@@ -362,6 +362,7 @@ class Fstar(nn.Module):
     NUM_RESNET: int
     cart_mat: jnp.ndarray  # Matrix for converting from polar to Cartesian coordinates.
     r_index: jnp.ndarray   # Index array for selecting specific parts of the input.
+    grad_checkpoint: bool=True # tends to break otherwise
 
     def setup(self):
         # Compute overall dimensions.
@@ -369,11 +370,13 @@ class Fstar(nn.Module):
         self.nx = (2**self.L) * self.s
         self.neta = (2**self.L) * self.s
 
-        self.V = V(self.r)
-        self.Hs = [H(build_permutation_indices(self.L, l)) for l in range(self.L-1, self.L//2-1, -1)]
-        self.Ms = [M() for _ in range(self.NUM_RESNET)]
-        self.Gs = [G(build_permutation_indices(self.L, l)) for l in range(self.L//2, self.L)]
-        self.U = U(self.s)
+        # Rematerialize if grad checkpointing requested
+        wrap = nn.remat if self.grad_checkpoint else (lambda x: x)
+        self.V  = wrap(V)(self.r)
+        self.Hs = [wrap(H)(build_permutation_indices(self.L, l)) for l in range(self.L-1, self.L//2-1, -1)]
+        self.Ms = [wrap(M)() for _ in range(self.NUM_RESNET)]
+        self.Gs = [wrap(G)(build_permutation_indices(self.L, l)) for l in range(self.L//2, self.L)]
+        self.U  = wrap(U)(self.s)
         self.switch_idx = build_switch_indices(self.L)
 
     def __call__(self, inputs):
@@ -393,27 +396,38 @@ class Fstar(nn.Module):
         y = inputs.take(self.r_index, axis=1)
         y = jnp.reshape(y, (-1, self.n, self.s, self.n, self.s, 2))
 
+        # jax.debug.print(f"pre-V: y.shape={y.shape}")
+
         # Apply the V transformation.
         y = self.V(y)
+        # jax.debug.print(f"post-V: y.shape={y.shape}")
+
         # Sequentially apply each H transformation.
         for h in self.Hs:
             y = h(y)
+        # jax.debug.print(f"post-H: y.shape={y.shape}")
 
         # Reorder blocks using the switch indices. Apply the series of M modules in a residual (skip-connection) fashion.
         y = y.take(self.switch_idx, axis=1).take(self.switch_idx, axis=3)
+        # jax.debug.print(f"post-reorder: y.shape={y.shape}")
 
         for m in self.Ms:
             # For the last M module, apply directly; for others, add a residual connection with ReLU.
             y = m(y) if m is self.Ms[-1] else y + nn.relu(m(y))
+        # jax.debug.print(f"post-switchresnet: y.shape={y.shape}")
 
         # Sequentially apply each G module.
         for g in self.Gs:
             y = g(y)
+        # jax.debug.print(f"post-G: y.shape={y.shape}")
         # Final upsampling and transformation.
         y = self.U(y)
+        # jax.debug.print(f"post-U: y.shape={y.shape}")
 
         # Extract the diagonal from the spatial dimensions to collapse redundancy.
         y = jnp.diagonal(y, axis1=1, axis2=2)
+        # jax.debug.print(f"post-diag: y.shape={y.shape}")
+
         output_polar = jnp.reshape(y, (-1, self.nx**2, 1))
 
         # Define a helper function to convert from polar to Cartesian coordinates.
@@ -422,6 +436,7 @@ class Fstar(nn.Module):
             return jnp.reshape(x, (self.neta, self.neta, 1))
 
         # Apply the conversion to each sample in the batch.
+        # return jax.remat(jax.vmap(polar_to_cart))(output_polar) # doesn't seem to help
         return jax.vmap(polar_to_cart)(output_polar)
 
 class CompressedModel(nn.Module):
@@ -432,14 +447,22 @@ class CompressedModel(nn.Module):
     NUM_CONV: int
     cart_mat: jnp.ndarray  # Matrix for polar to Cartesian conversion.
     r_index: jnp.ndarray   # Index array for selecting relevant input data.
+    grad_checkpoint: bool=False
 
     def setup(self):
-        self.fstar_layer0 = Fstar(L=self.L, s=self.s, r=self.r, NUM_RESNET=self.NUM_RESNET,
-                                  cart_mat=self.cart_mat, r_index=self.r_index)
-        self.fstar_layer1 = Fstar(L=self.L, s=self.s, r=self.r, NUM_RESNET=self.NUM_RESNET,
-                                  cart_mat=self.cart_mat, r_index=self.r_index)
-        self.fstar_layer2 = Fstar(L=self.L, s=self.s, r=self.r, NUM_RESNET=self.NUM_RESNET,
-                                  cart_mat=self.cart_mat, r_index=self.r_index)
+        Fstar_chkpt = nn.remat(Fstar) if self.grad_checkpoint else Fstar
+        self.fstar_layer0 = Fstar_chkpt(
+            L=self.L, s=self.s, r=self.r, NUM_RESNET=self.NUM_RESNET,
+            cart_mat=self.cart_mat, r_index=self.r_index
+        )
+        self.fstar_layer1 = Fstar_chkpt(
+            L=self.L, s=self.s, r=self.r, NUM_RESNET=self.NUM_RESNET,
+            cart_mat=self.cart_mat, r_index=self.r_index
+        )
+        self.fstar_layer2 = Fstar_chkpt(
+            L=self.L, s=self.s, r=self.r, NUM_RESNET=self.NUM_RESNET,
+            cart_mat=self.cart_mat, r_index=self.r_index
+        )
 
         self.convs = [nn.Conv(features=6, kernel_size=(3, 3), padding='SAME') for _ in range(self.NUM_CONV)]
         self.final_conv = nn.Conv(features=1, kernel_size=(3, 3), padding='SAME')
@@ -502,6 +525,7 @@ class CompressedModelFlexible(nn.Module):
     N_cnn_layers: int = 9
     N_cnn_channels: int = 6
     kernel_size: int = 3
+    grad_checkpoint: bool = True
 
     # I/O normalization?
     in_norm:  bool = False
@@ -512,14 +536,21 @@ class CompressedModelFlexible(nn.Module):
     out_std:  jnp.ndarray = None
 
     def setup(self):
+        # Checkpoint if requested using flax/linen
+        Fstar_chkpt = (
+            nn.remat(Fstar)
+            if self.grad_checkpoint
+            else Fstar
+        )
         self.fstar_layers = [
-            Fstar(
+            Fstar_chkpt(
                 L=self.L,
                 s=self.s,
                 r=self.r,
                 NUM_RESNET=self.N_resnet_layers,
                 cart_mat=self.cart_mat,
-                r_index=self.r_index
+                r_index=self.r_index,
+                grad_checkpoint=not self.grad_checkpoint, # don't want to be redundant...
             )
             for _ in range(self.nk)
         ]
@@ -556,13 +587,33 @@ class CompressedModelFlexible(nn.Module):
         # Process each channel separately using Fstar layers
         # and concatenate outputs along channel dimension
         # OOT TODO: if this is too slow, consider pmap?
+        # jax.debug.print(f"Inputs shape: {inputs.shape}")
+        # if self.grad_checkpoint:
+        #     y = jnp.concatenate(
+        #         [
+        #             jax.checkpoint(self.fstar_layers[i].__call__)(inputs[:, :, :, i])
+        #             for i in range(self.nk)
+        #         ],
+        #         axis=-1,
+        #     )
+        # else:
+        #     y = jnp.concatenate(
+        #         [
+        #             self.fstar_layers[i](inputs[:, :, :, i])
+        #             for i in range(self.nk)
+        #         ],
+        #      )
         y = jnp.concatenate(
             [
-                self.fstar_layers[i](inputs[:, :, :, i])
+                self.fstar_layers[i](
+                    inputs[:, :, :, i]
+                )
+                # self.fstar_layers[i](inputs[:, :, :, i])
                 for i in range(self.nk)
             ],
             axis=-1,
         )
+        # jax.debug.print(f"y inputs from Compressed: {y.shape}")
 
         # Apply a series of convolutional layers with ReLU activations.
         for conv_layer in self.convs:
@@ -578,6 +629,6 @@ class CompressedModelFlexible(nn.Module):
         output = y[:, :, :, 0]
 
         if self.out_norm:
-            output = (output - self.out_mean) / self.out_std # will the axes work out?
+            output = (output + self.out_mean) * self.out_std # will the axes work out?
 
         return output
