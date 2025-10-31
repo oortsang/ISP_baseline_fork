@@ -105,6 +105,7 @@ def setup_args() -> argparse.Namespace:
     parser.add_argument(
         "--blur_sigma", default=0.5, type=float,
     )
+    parser.add_argument("--blur_test", choices=bool_choices, default="false")
 
     ### Training/validation-related arguments ###
     parser.add_argument("--truncate_num_train", type=int)
@@ -176,6 +177,7 @@ def setup_args() -> argparse.Namespace:
         "output_pred_save",
         "io_norm",
         "grad_checkpoint",
+        "blur_test",
     ]
     # Process the boolean arguments from strings
     for bool_arg in bool_args:
@@ -232,7 +234,10 @@ def main(
     s = s // downsample_ratio
     neta = (2**L) * s
     nx = (2**L) * s
-    blur_sigma = args.blur_sigma
+    train_blur_sigma = args.blur_sigma
+    val_blur_sigma   = args.blur_sigma if args.blur_test else 0
+    test_blur_sigma  = args.blur_sigma if args.blur_test else 0
+    print(f"Blurring val/test data? {args.blur_test}")
 
     kbar_str_list = args.data_input_nus
     nk = len(kbar_str_list)
@@ -262,11 +267,11 @@ def main(
     print(f"Loaded: {', '.join([f'{key}{val.shape}' for (key, val) in train_mfisnet_dd.items()])}")
     train_wb_dd = convert_mfisnet_data_dict(
         train_mfisnet_dd,
-        blur_sigma=blur_sigma,
+        blur_sigma=train_blur_sigma,
         scatter_as_real=True,
         real_imag_axis=2,
         downsample_ratio=downsample_ratio,
-        flip_scobj_axes=True,
+        flip_scobj_axes=False,
     )
 
     train_eta = train_wb_dd["eta"]
@@ -304,11 +309,11 @@ def main(
     )
     val_wb_dd = convert_mfisnet_data_dict(
         val_mfisnet_dd,
-        blur_sigma=blur_sigma,
+        blur_sigma=val_blur_sigma,
         scatter_as_real=True,
         real_imag_axis=2,
         downsample_ratio=downsample_ratio,
-        flip_scobj_axes=True,
+        flip_scobj_axes=False,
     )
     # Try downsampling since the sparsepolartocartesian step is so slow :((
     val_eta     = val_wb_dd["eta"]
@@ -498,9 +503,9 @@ def main(
         test_mfisnet_dd,
         scatter_as_real=True,
         real_imag_axis=2,
-        blur_sigma=blur_sigma,
+        blur_sigma=test_blur_sigma,
         downsample_ratio=downsample_ratio,
-        flip_scobj_axes=True,
+        flip_scobj_axes=False,
     )
 
     # Try downsampling since the sparsepolartocartesian step is so slow :((
@@ -513,6 +518,20 @@ def main(
         test_scatter,
         batch_size=test_batch_size,
     )
+
+    # Use the un-blurred training set for evaluation
+    if test_blur_sigma != 0:
+        print(f"Re-loading the training set without blurring..")
+        noblur_train_wb_dd = convert_mfisnet_data_dict(
+            train_mfisnet_dd,
+            scatter_as_real=True,
+            real_imag_axis=1,
+            blur_sigma=test_blur_sigma,
+            downsample_ratio=downsample_ratio,
+            flip_scobj_axes=False,
+        )
+        # Overwrite the existing train_eta
+        train_eta = noblur_train_wb_dd["eta"]
 
     x_vals = train_mfisnet_dd["x_vals"]
     loss_fn_dict = get_loss_fns(["rrmse", "rel_l2", "psnr"])

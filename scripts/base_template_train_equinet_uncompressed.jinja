@@ -34,6 +34,7 @@ NU_NAME=$(echo ${NU_ARG} | sed "s/ /_/g")
 {{ n_r }} \
 {{ downsample_ratio }} \
 {{ blur_sigma }} \
+{{ blur_test }} \
 {{ num_train }} \
 {{ num_val }} \
 {{ num_test }} \
@@ -56,3 +57,5 @@ NU_NAME=$(echo ${NU_ARG} | sed "s/ /_/g")
 {{ noise_seed_list_val }} \
 {{ noise_seed_list_test }} \
 {{ debug }}
+
+date

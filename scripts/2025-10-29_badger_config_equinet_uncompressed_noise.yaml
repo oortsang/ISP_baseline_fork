@@ -11,7 +11,7 @@ definitions:
     num_cpu: 2
     num_gpu: 1
     min_vram: "48g"
-    job_walltime: "2:00:00"
+    job_walltime: "8:00:00"
     mail_type: "NONE"
     mail_user: ""
   submission:
@@ -35,18 +35,17 @@ definitions:
 arguments:
   - !Scalar
     name: run_date
-    value: 2025-10-27
+    value: 2025-10-29
     metadata_rules: [ !SaveValueInMetadata { path: run_date } ]
 
   - !Scalar
     name: part_run_name
-    value: "wb_equinet_short_gridsearch"
+    value: "wb_equinet_noise"
     metadata_rules: [ !SaveValueInMetadata { path: part_run_name } ]
 
   - !Scalar
     name: data_input_nus
     value: "(1,2,3,4,5,6,7,8,9,10)"
-    # value: "(2,5,10)"
 
   - !Scalar
     name: N_k
@@ -80,9 +79,10 @@ arguments:
 
   - !Scalar { name: n_x, value: *N_X, prefix: "--neta" }
   - !Scalar { name: n_r, value: *N_R, prefix: "--nx" }
-  - !Scalar { name: blur_sigma, value: 0.5, prefix: "--blur_sigma" }
+  - !Scalar { name: blur_sigma, value: "0.0", prefix: "--blur_sigma" }
+  - !Scalar { name: blur_test, value: "false", prefix: "--blur_test" }
   - !Scalar { name: downsample_ratio, value: 1, prefix: "--downsample_ratio" }
-  - !Scalar { name: n_epochs, value: 25, prefix: "--n_epochs" }
+  - !Scalar { name: n_epochs, value: 50, prefix: "--n_epochs" }
   - !Scalar { name: grad_checkpoint, value: "false", prefix: "--grad_checkpoint" }
   - !Scalar { name: batch_size, value: 16, prefix: "--batch_size" }
   - !Scalar { name: log_batch_size, value: 16, prefix: "--log_batch_size" }
@@ -93,10 +93,40 @@ arguments:
 
   # Noise settings
   - !Range
+    name: noise_level
+    values:
+      - 0.0
+      - 0.1
+      - 0.2
+      - 0.3
+      - 0.4
+      - 0.5
+      - 0.6
+      - 0.7
+      - 0.8
+      - 0.9
+      - 1.0
+    metadata_rules: [ !SaveValueInMetadata {path: noise_level } ]
+
+  - !ArgumentFromMetadata
     name: noise_to_signal_ratio
     prefix: "--noise_to_signal_ratio"
-    values: [ 0.0 ]
-    metadata_rules: [!SaveValueInMetadata {path: noise_to_signal_ratio}]
+    format_rule: "{noise_level}"
+    sources: [
+        { path: noise_level, destination: noise_level },
+    ]
+    metadata_rules: [ !SaveValueInMetadata { path: noise_to_signal_ratio } ]
+
+  # - !Range
+  #   name: noise_to_signal_ratio
+  #   prefix: "--noise_to_signal_ratio"
+  #   values: [ 0.0 ]
+  #   metadata_rules: [!SaveValueInMetadata {path: noise_to_signal_ratio}]
+
+  - !Scalar
+    name: use_noise_seed
+    value: "true"
+    prefix: "--use_noise_seed"
 
   - !Scalar
     name: noise_seed_base_train
@@ -144,17 +174,17 @@ arguments:
   - !Range
     name: n_cnn_layers_2d
     prefix: "--n_cnn_layers_2d"
-    values: [ 3, 6, 9 ]
+    values: [ 3 ]
     metadata_rules: [ !SaveValueInMetadata { path: n_cnn_layers_2d } ]
   - !Range
     name: n_cnn_channels_2d
     prefix: "--n_cnn_channels_2d"
-    values: [ 6, 12, 24, 36 ]
+    values: [ 12 ]
     metadata_rules: [ !SaveValueInMetadata { path: n_cnn_channels_2d } ]
   - !Range
     name: kernel_size_2d
     prefix: "--kernel_size_2d"
-    values: [ 3, 5 ]
+    values: [ 5 ]
     metadata_rules: [ !SaveValueInMetadata { path: kernel_size_2d } ]
 
   # Group with architecture since it's like deciding whether to have a
@@ -171,9 +201,8 @@ arguments:
   - !Range
     name: lr_init
     prefix: "--lr_init"
-    values: [ 1e-5, 1e-4 ]
+    values: [ 1e-5 ]
     metadata_rules: [ !SaveValueInMetadata { path: lr_init } ]
-
 
   # I/O stuff
   - !ArgumentFromMetadata

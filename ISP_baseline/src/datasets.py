@@ -24,7 +24,8 @@ def apply_blur_to_q(
     blur_fn = lambda x: gaussian_filter(x, sigma=blur_sigma)
     q_blurred = np.stack(
         [
-            blur_fn(q[i, :, :].T)
+            # blur_fn(q[i, :, :].T)
+            blur_fn(q[i, :, :])
             for i in range(N_samples)
         ],
         axis=0,

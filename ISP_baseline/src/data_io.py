@@ -553,7 +553,7 @@ def load_cart_multifreq_dataset(
     dir_list: list,
     global_idx_start: int=0,
     global_idx_end: int=None,
-    add_noise: bool=False,
+    # add_noise: bool=False,
     noise_to_sig_ratio: float=0,
     noise_seed: int | list=None,
     noise_seed_mode: str = "sequential",
@@ -569,8 +569,11 @@ def load_cart_multifreq_dataset(
         sample_keys=[Q_CART, D_RS, SAMPLE_COMPLETION],
         freq_dep_keys=[D_RS],
     )
-    if add_noise and noise_to_sig_ratio != 0:
+    if noise_to_sig_ratio != 0:
         # raise NotImplementedError(f"Noise not supported currently")
+        print(
+            f"Adding noise at level {noise_to_sig_ratio} with scaling {noise_norm_mode}"
+        )
         logging.info(
             f"Adding noise at level {noise_to_sig_ratio} with scaling {noise_norm_mode}"
         )

@@ -1,4 +1,3 @@
-
 from collections.abc import Callable, Mapping
 import dataclasses
 import functools
@@ -43,7 +42,6 @@ class DeterministicModel(models.BaseModel):
   ) -> models.LossAndAux:
 
     y = self.core_module.apply({'params': params}, batch["scatter"])
-
     loss = jnp.mean(jnp.square(y - batch["eta"]))
     metric = dict(loss=loss)
     return loss, (metric, mutables)

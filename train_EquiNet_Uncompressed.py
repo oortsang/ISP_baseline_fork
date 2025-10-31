@@ -5,6 +5,7 @@ import sys
 import time
 
 os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = "0.98"
+# os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
 # os.environ["JAX_TRACEBACK_FILTERING"] = "off"
 import numpy as np
 import jax
@@ -106,6 +107,7 @@ def setup_args() -> argparse.Namespace:
     parser.add_argument(
         "--blur_sigma", default=0.5, type=float,
     )
+    parser.add_argument("--blur_test", choices=bool_choices, default="false")
 
     ### Training/validation-related arguments ###
     parser.add_argument("--truncate_num_train", type=int)
@@ -161,6 +163,7 @@ def setup_args() -> argparse.Namespace:
     bool_args = [
         "use_noise_seed",
         "output_pred_save",
+        "blur_test",
         "io_norm",
         "grad_checkpoint",
     ]
@@ -218,7 +221,10 @@ def main(
     downsample_ratio = args.downsample_ratio
     neta = args.neta // downsample_ratio
     nx   = args.nx   // downsample_ratio
-    blur_sigma = args.blur_sigma
+    train_blur_sigma = args.blur_sigma
+    val_blur_sigma   = args.blur_sigma if args.blur_test else 0
+    test_blur_sigma  = args.blur_sigma if args.blur_test else 0
+    print(f"Blurring val/test data? {args.blur_test}")
 
     kbar_str_list = args.data_input_nus
     nk = len(kbar_str_list)
@@ -250,9 +256,9 @@ def main(
         train_mfisnet_dd,
         scatter_as_real=True,
         real_imag_axis=1,
-        blur_sigma=blur_sigma,
+        blur_sigma=train_blur_sigma,
         downsample_ratio=downsample_ratio,
-        flip_scobj_axes=True,
+        flip_scobj_axes=False,
     )
 
     train_eta = train_wb_dd["eta"]
@@ -292,9 +298,9 @@ def main(
         val_mfisnet_dd,
         scatter_as_real=True,
         real_imag_axis=1,
-        blur_sigma=blur_sigma,
+        blur_sigma=val_blur_sigma,
         downsample_ratio=downsample_ratio,
-        flip_scobj_axes=True,
+        flip_scobj_axes=False,
     )
     # Try downsampling since the sparsepolartocartesian step is so slow :((
     val_eta     = val_wb_dd["eta"]
@@ -347,7 +353,7 @@ def main(
         N_cnn_channels=N_cnn_channels,
         kernel_size=kernel_size,
         grad_checkpoint=args.grad_checkpoint,
-        
+
         # I/O normalization
         in_norm=args.io_norm,
         out_norm=args.io_norm,
@@ -471,12 +477,11 @@ def main(
         test_mfisnet_dd,
         scatter_as_real=True,
         real_imag_axis=1,
-        blur_sigma=blur_sigma,
+        blur_sigma=test_blur_sigma,
         downsample_ratio=downsample_ratio,
-        flip_scobj_axes=True,
+        flip_scobj_axes=False,
     )
 
-    # Try downsampling since the sparsepolartocartesian step is so slow :((
     test_eta     = test_wb_dd["eta"]
     test_scatter = test_wb_dd["scatter"]
     print(f"test_eta     shape: {test_eta.shape}")
@@ -489,6 +494,20 @@ def main(
         batch_size=test_batch_size,
     )
 
+    # Use the un-blurred training set for evaluation
+    if test_blur_sigma != 0:
+        print(f"Re-loading the training set without blurring..")
+        noblur_train_wb_dd = convert_mfisnet_data_dict(
+            train_mfisnet_dd,
+            scatter_as_real=True,
+            real_imag_axis=1,
+            blur_sigma=test_blur_sigma,
+            downsample_ratio=downsample_ratio,
+            flip_scobj_axes=False,
+        )
+        # Overwrite the existing train_eta
+        train_eta = noblur_train_wb_dd["eta"]
+
     x_vals = train_mfisnet_dd["x_vals"]
     loss_fn_dict = get_loss_fns(["rrmse", "rel_l2", "psnr"])
     dset_name_list = ["train", "val", "test"]
@@ -500,11 +519,13 @@ def main(
     ]
     all_loss_strs = {loss_name: f"" for loss_name in loss_fn_dict.keys()}
 
+    print(f"Starting evaluation...")
     for i, dset in enumerate(dset_name_list):
         # dataset = dataset_list[i]
         dset_scatter, dset_eta = dataset_list[i]
         print(f"{dset}_scatter shape: {dset_scatter.shape}")
         print(f"{dset}_eta shape:     {dset_eta.shape}")
+        t0 = time.perf_counter()
         dset_preds, dset_loss_vals = eval_model(
             trained_state,
             core_module,
@@ -513,8 +534,10 @@ def main(
             dset_eta=dset_eta,
             eval_batch_size=args.log_batch_size,
             loss_fn_dict=loss_fn_dict,
-            return_sample_losses=False
+            return_sample_losses=False,
         )
+        t1 = time.perf_counter()
+        print(f"dset {dset} was evaluated in {t1-t0:.3f} seconds")
         print(f"dset {dset} losses: {dset_loss_vals}")
         for loss_name in loss_fn_dict.keys():
             loss_mean = dset_loss_vals[f"{loss_name}_mean"]
@@ -541,6 +564,10 @@ def main(
     for loss_name in loss_fn_dict.keys():
         print(f"Overall {loss_name}: {all_loss_strs[loss_name]}")
 
+    vram_msg = utils.get_memory_info_jax(jax_device, print_msg=False)
+    print(f"After evaluation: {vram_msg}")
+    print("Bye!")
+
 if __name__ == "__main__":
     a = setup_args()
 
@@ -565,7 +592,6 @@ if __name__ == "__main__":
     # formatter = logging.Formatter(FMT, datefmt=TIMEFMT)
     # handler.setFormatter(formatter)
     # root.addHandler(handler)
-
 
     print(f"Received the following arguments: {a}")
     logging.info(f"Received the following arguments: {a}")
