@@ -50,6 +50,26 @@ def l2_error(
     # out_l2_err = jnp.mean(l2_errs, axis=mean_axes)
     return out_l2_errs
 
+def l2_error_mean(
+    pred: jax.Array,
+    true: jax.Array,
+    *args,
+    l2_axes: Sequence[int] = (),
+    mean_axes: Sequence[int] | None = None,
+    relative: bool = True,
+    squared: bool = False,
+):
+    err_arr = l2_error(
+        pred=pred,
+        true=true,
+        *args,
+        l2_axes=l2_axes,
+        relative=relative,
+        squared=squared,
+    )
+    # err_mean = jnp.mean(err_arr).item()
+    err_mean = jnp.mean(err_arr, axis=mean_axes)
+    return err_mean
 
 def mse_alt(
     pred: jax.Array,

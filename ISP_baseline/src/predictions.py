@@ -88,6 +88,10 @@ def eval_model(
     )
     loss_vals_dict = {key: [] for key in loss_fn_dict.keys()}
 
+    jax_device = jax.config.jax_default_device
+    vram_msg = utils.get_memory_info_jax(jax_device, print_msg=False)
+    print(f"Eval pre-dataset: {vram_msg}")
+
     # Set up the dataset
     tmp_dataset = (
         # dataset
@@ -101,9 +105,16 @@ def eval_model(
     )
     dataloader = tmp_dataset.as_numpy_iterator()
 
+    vram_msg = utils.get_memory_info_jax(jax_device, print_msg=False)
+    print(
+        f"Eval after setting up dataset and data loader "
+        f"(batch_size={eval_batch_size}): {vram_msg}"
+    )
+
     # Iterate through the dataset
     pred_eta_list = []
     for b, batch in enumerate(dataloader):
+        # import pdb; pdb.set_trace()
         batch_pred = inference_fn(batch["scatter"])
         batch_true = batch["eta"]
         # print(f"batch_pred shape: {batch_pred.shape}")
@@ -116,6 +127,12 @@ def eval_model(
             loss_vals_dict[key].append(
                 loss_fn(pred=batch_pred, true=batch_true)
             )
+
+        # vram_msg = utils.get_memory_info_jax(jax_device, print_msg=False)
+        # print(f"Eval after batch {b}: {vram_msg}")
+
+    vram_msg = utils.get_memory_info_jax(jax_device, print_msg=False)
+    print(f"Eval after running the model: {vram_msg}")
 
     # Flatten the predictions and loss values
     pred_eta = np.concatenate(

@@ -143,6 +143,7 @@ class UncompressedModel(nn.Module):
 
         return y[:, :, :, 0]
 
+@jax.jit
 def vm_helper(pre, post, kernel2, kernel1, data):
     """Vmapped helper function for MultifreqFstar
     Args:
@@ -162,28 +163,21 @@ def vm_helper(pre, post, kernel2, kernel1, data):
     #     term2 = jnp.matmul(term1, kernel1)
     #     term3 = jnp.multiply(kernel2, term2)
     #     term4 = jnp.matmul(post, term3)
-    # return jax.vmap(jax.vmap(internal_helper))(data)
+    # return jax.vmap(jax.vmap(internal_helper))(data) # I think this is broken
     # term1 = jnp.einsum("fbij,fij->fbij", data, pre) # multiply
     # term2 = jnp.einsum("fbij,fjk->fbik", term1, kernel1) # matmul
     # term3 = jnp.einsum("fik,fbik->fbik", kernel2, term2) # multiply
     # term4 = jnp.einsum("fhi,fbik->fbhk", post, term3) # matmul
     # out = term4
-    # term12 = jnp.einsum(
-    #     "fbij,fij,fjk->fbik",
-    #     data, pre, kernel1,
-    # )
-    # term34 = jnp.einsum(
-    #     "fhi,fik,fbik->fbhk",
-    #     post, kernel2, term12,
-    # )
+    # term12 = jnp.einsum("fbij,fij,fjk->fbik", data, pre, kernel1)
+    # term34 = jnp.einsum("fhi,fik,fbik->fbhk", post, kernel2, term12)
     # out = term34
-    term1234 = jnp.einsum(
+    # # (OOT) I apologize to your eyes but this is much faster and
+    # # more VRAM-efficient than any of the previous versions
+    out = jnp.einsum(
         "fhi,fik,  fbij,fij,fjk->fbhk",
         post, kernel2, data, pre, kernel1,
     )
-    out = term1234
-
-    # jax.debug.print(f"data: {data.shape} t1:{term1.shape} t2:{term2.shape} t3:{term3.shape} t4:{term4.shape}")
     return out
 
 class MultifreqFstar(nn.Module):
@@ -231,7 +225,6 @@ class MultifreqFstar(nn.Module):
             jnp.ndarray: Output tensor in Cartesian coordinates with shape (batch, neta**2, 1)
         """
         inputs = jnp.transpose(inputs, (3, 0, 1, 2)) # move frequency axis to the first slot
-        # inputs = jnp.permute_dims(inputs, (3, 0, 1, 2)) # move frequency axis to the first slot
         # jax.debug.print(f"inputs: {inputs.shape}")
         inputs = jax.device_put(inputs, self.shard)
         # Separate real and imaginary parts of inputs
@@ -260,7 +253,7 @@ class MultifreqFstar(nn.Module):
             """
             out_tmp = self.cart_mat @ x
             return jnp.reshape(out_tmp, (self.neta, self.neta, 1))
-        
+
         output_cart = jax.vmap(jax.vmap(polar_to_cart))(output_polar).reshape(self.nk, -1, self.neta, self.neta)
         output_cart = jnp.transpose(output_cart, (1,2,3, 0)) # freq dim last
         return output_cart
@@ -275,7 +268,7 @@ class MultifreqFstar(nn.Module):
 
 # ### (OOT, 2025-10-06) Below this, I've introduced an alternate interface
 # # that I hope is a bit more flexible (i.e., set number of frequencies and hyperparameters)
-        
+
 class UncompressedModelFlexible(nn.Module):
     """Modified interface of the Uncompressed model to accept more frequencies and
     more control over the hyperparameter choices

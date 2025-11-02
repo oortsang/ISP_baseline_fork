@@ -47,7 +47,8 @@ from ISP_baseline.src.datasets import (
     get_io_mean_std,
 )
 from ISP_baseline.src.more_metrics import (
-    l2_error
+    l2_error,
+    l2_error_mean,
 )
 from ISP_baseline.src.predictions import (
     get_loss_fns,
@@ -55,6 +56,7 @@ from ISP_baseline.src.predictions import (
     eval_model,
     save_preds_q_cart,
 )
+from ISP_baseline.src.more_callbacks import LoggingOutput, TrainStateCheckpointEpochChoice
 
 tf.config.set_visible_devices([], device_type='GPU')
 
@@ -194,7 +196,7 @@ def main(
     Train the Uncompressed EquiNet model
     """
     np.random.seed(args.seed)
-    print(f"Selecting work dir: {args.work_dir}")
+    logging.info(f"Selecting work dir: {args.work_dir}")
     # Get noise seeds
     if args.use_noise_seed:
         eff_noise_seed_list_train = args.noise_seed_list_train
@@ -224,7 +226,7 @@ def main(
     train_blur_sigma = args.blur_sigma
     val_blur_sigma   = args.blur_sigma if args.blur_test else 0
     test_blur_sigma  = args.blur_sigma if args.blur_test else 0
-    print(f"Blurring val/test data? {args.blur_test}")
+    logging.info(f"Blurring val/test data? {args.blur_test}")
 
     kbar_str_list = args.data_input_nus
     nk = len(kbar_str_list)
@@ -232,9 +234,10 @@ def main(
     NVAL   = args.truncate_num_val
     NTEST  = args.truncate_num_test
     vram_msg = utils.get_memory_info_jax(jax_device, print_msg=False)
-    print(f"Before loading data: {vram_msg}")
+    logging.info(f"Before loading data: {vram_msg}")
 
     # Load the dataset
+    logging.info(f"Loading training set from disk...")
     train_dirs = get_multifreq_dset_dirs(
         "train",
         kbar_str_list,
@@ -251,7 +254,8 @@ def main(
         noise_seed_mode="sequential",
         noise_norm_mode="inf",
     )
-    print(f"Loaded: {', '.join([f'{key}{val.shape}' for (key, val) in train_mfisnet_dd.items()])}")
+    logging.info(f"Loaded: {', '.join([f'{key}{val.shape}' for (key, val) in train_mfisnet_dd.items()])}")
+    logging.info(f"Converting training set...")
     train_wb_dd = convert_mfisnet_data_dict(
         train_mfisnet_dd,
         scatter_as_real=True,
@@ -263,8 +267,8 @@ def main(
 
     train_eta = train_wb_dd["eta"]
     train_scatter = train_wb_dd["scatter"]
-    print(f"train_eta     shape: {train_eta.shape}")
-    print(f"train_scatter shape: {train_scatter.shape}")
+    logging.info(f"train_eta     shape: {train_eta.shape}")
+    logging.info(f"train_scatter shape: {train_scatter.shape}")
     (
     train_scatter_mean,
         train_scatter_std,
@@ -279,6 +283,7 @@ def main(
         repeats=True,
     )
 
+    logging.info(f"Loading validation set...")
     val_dirs = get_multifreq_dset_dirs(
         "val",
         kbar_str_list,
@@ -294,6 +299,7 @@ def main(
         noise_seed_mode="sequential",
         noise_norm_mode="inf",
     )
+    logging.info(f"Converting validation set...")
     val_wb_dd = convert_mfisnet_data_dict(
         val_mfisnet_dd,
         scatter_as_real=True,
@@ -319,7 +325,7 @@ def main(
         repeats=True,
     )
 
-    print(f"Setting up the model...")
+    logging.info(f"Setting up the model...")
     N_cnn_layers = args.n_cnn_layers_2d
     N_cnn_channels = args.n_cnn_channels_2d
     kernel_size = args.kernel_size_2d
@@ -330,7 +336,7 @@ def main(
         mats_format="mats_neta{0}_nx{1}.npz",
         save_if_created=True,
     )
-    print(f"Created or loaded cart_mat")
+    logging.info(f"Created or loaded cart_mat")
     hyperparam_dict = {
         "nx": nx,
         "neta": neta,
@@ -363,8 +369,8 @@ def main(
         out_std=jnp.array(train_eta_std),
     )
 
-    print(f"nx: {nx}; neta: {neta}")
-    print(f"Input shape: {train_scatter[0].shape}")
+    logging.info(f"nx: {nx}; neta: {neta}")
+    logging.info(f"Input shape: {train_scatter[0].shape}")
     Model = models.DeterministicModel(
         input_shape = train_scatter[0].shape,
         core_module = core_module
@@ -372,12 +378,12 @@ def main(
     rng = jax.random.PRNGKey(888)
     params = Model.initialize(rng)
     param_count = sum(x.size for x in jax.tree_util.tree_leaves(params))
-    print('Number of trainable parameters:', param_count)
+    logging.info(f"Number of trainable parameters: {param_count}")
 
-    print(f"Training...")
+    logging.info(f"Training...")
     num_train_steps = NTRAIN * args.n_epochs // args.batch_size  #@param
-    batches_per_epoch = args.n_epochs // args.batch_size
-    log_batches_per_epoch = args.n_epochs // args.log_batch_size
+    batches_per_epoch = NTRAIN // args.batch_size
+    log_batches_per_epoch = NVAL // args.log_batch_size
     # workdir = os.path.abspath('') + "/tmp/Uncompressed10squaresDev"  #@param
     workdir = os.path.join(os.path.abspath(''), args.work_dir)
     if os.path.exists(workdir):
@@ -388,7 +394,8 @@ def main(
     peak_lr = 5e-3 #@pawram
     warmup_steps = num_train_steps // 20  #@param
     end_lr = 1e-8 #@param
-    ckpt_interval = 2000  #@param
+    # ckpt_interval = 2000  #@param
+    eval_interval = args.n_epochs_per_log*batches_per_epoch
     max_ckpt_to_keep = 3  #@param
 
     trainer = trainers.DeterministicTrainer(
@@ -406,50 +413,65 @@ def main(
     )
     # get_memory_info_jax
     vram_msg = utils.get_memory_info_jax(jax_device, print_msg=False)
-    print(f"Before training: {vram_msg}")
+    logging.info(f"Before training: {vram_msg}")
+    # print(f"batches_per_epoch={batches_per_epoch}")
 
-    try:
-        templates.run_train(
-            train_dataloader=train_dloader,
-            trainer=trainer,
-            workdir=workdir,
-            total_train_steps=num_train_steps,
-            metric_writer=metric_writers.create_default_writer(
-                workdir, asynchronous=False,
-            ),
-            metric_aggregation_steps=10,
-            eval_dataloader=val_dloader_looped,
-            eval_every_steps = (
-                # args.n_epochs_per_log*batches_per_epoch
-                100
-            ),
-            # num_batches_per_eval = log_batches_per_epoch,
-            num_batches_per_eval = 1,
-            callbacks=(
-                templates.TqdmProgressBar(
-                    total_train_steps=num_train_steps,
-                    train_monitors=("train_loss",),
-                    eval_monitors=("eval_rel_l2_mean",),
-                ),
-                templates.TrainStateCheckpoint(
-                    base_dir=workdir,
-                    options=ocp.CheckpointManagerOptions(
-                        save_interval_steps=ckpt_interval, max_to_keep=max_ckpt_to_keep
-                    ),
-                ),
-            ),
-        )
-    except Exception as e:
-        logging.error(f"Exception: {e}")
-        vram_msg = utils.get_memory_info_jax(jax_device, print_msg=False)
-        print(f"{vram_msg}")
-        sys.exit(1)
+    logging_callback = LoggingOutput(
+        total_train_steps=num_train_steps,
+        train_monitors=("train_loss",),
+        eval_monitors=("eval_rel_l2_mean",),
+    )
+    def dummy(*args, **kwargs):
+        print(f"args={args}")
+        print(f"kwargs={kwargs}")
+        return 0
+    def sel_fn(metrics):
+        print(f"metrics seen: {metrics.keys()}")
+        # okay so technically this is not true but getting this to work is such a pain
+        obj = metrics.get("eval_rel_l2_mean", np.inf)
+        return float(obj)
+
+    train_state_ckpt_callback = TrainStateCheckpointEpochChoice(
+        base_dir=workdir,
+        options=ocp.CheckpointManagerOptions(
+            save_interval_steps=eval_interval,
+            max_to_keep=max_ckpt_to_keep,
+            best_mode="min",
+            best_fn=sel_fn,
+        ),
+    )
+    templates.run_train(
+        train_dataloader=train_dloader,
+        trainer=trainer,
+        workdir=workdir,
+        total_train_steps=num_train_steps,
+        metric_writer=metric_writers.create_default_writer(
+            workdir, asynchronous=False,
+        ),
+        metric_aggregation_steps=batches_per_epoch,
+        eval_dataloader=val_dloader_looped,
+        eval_every_steps = eval_interval,
+        num_batches_per_eval = log_batches_per_epoch,
+        callbacks=(
+            logging_callback,
+            train_state_ckpt_callback,
+        ),
+    )
+    best_step  = train_state_ckpt_callback.ckpt_manager.best_step()
+    best_epoch = best_step // batches_per_epoch
+    logging.info(f"Best step: {best_step} (epoch {best_epoch})")
+    # except Exception as e:
+    #     logging.error(f"Exception: {e}")
+    #     vram_msg = utils.get_memory_info_jax(jax_device, print_msg=False)
+    #     logging.info(f"{vram_msg}")
+    #     sys.exit(1)
     vram_msg = utils.get_memory_info_jax(jax_device, print_msg=False)
-    print(f"After training: {vram_msg}")
+    logging.info(f"After training: {vram_msg}")
 
 
     trained_state = trainers.TrainState.restore_from_orbax_ckpt(
-        f"{workdir}/checkpoints", step=None,
+        # f"{workdir}/checkpoints", step=None,
+        f"{workdir}/checkpoints", step=best_step,
     )
 
     inference_fn = trainers.DeterministicTrainer.build_inference_fn(
@@ -472,7 +494,7 @@ def main(
         noise_seed_mode="sequential",
         noise_norm_mode="inf",
     )
-    print(f"Loaded: {', '.join([f'{key}{val.shape}' for (key, val) in test_mfisnet_dd.items()])}")
+    logging.info(f"Loaded: {', '.join([f'{key}{val.shape}' for (key, val) in test_mfisnet_dd.items()])}")
     test_wb_dd = convert_mfisnet_data_dict(
         test_mfisnet_dd,
         scatter_as_real=True,
@@ -484,8 +506,8 @@ def main(
 
     test_eta     = test_wb_dd["eta"]
     test_scatter = test_wb_dd["scatter"]
-    print(f"test_eta     shape: {test_eta.shape}")
-    print(f"test_scatter shape: {test_scatter.shape}")
+    logging.info(f"test_eta     shape: {test_eta.shape}")
+    logging.info(f"test_scatter shape: {test_scatter.shape}")
 
     test_batch_size = args.log_batch_size
     test_dataset, test_dloader = setup_tf_dataset(
@@ -496,7 +518,7 @@ def main(
 
     # Use the un-blurred training set for evaluation
     if test_blur_sigma != 0:
-        print(f"Re-loading the training set without blurring..")
+        logging.info(f"Re-loading the training set without blurring..")
         noblur_train_wb_dd = convert_mfisnet_data_dict(
             train_mfisnet_dd,
             scatter_as_real=True,
@@ -519,12 +541,12 @@ def main(
     ]
     all_loss_strs = {loss_name: f"" for loss_name in loss_fn_dict.keys()}
 
-    print(f"Starting evaluation...")
+    logging.info(f"Starting evaluation...")
     for i, dset in enumerate(dset_name_list):
         # dataset = dataset_list[i]
         dset_scatter, dset_eta = dataset_list[i]
-        print(f"{dset}_scatter shape: {dset_scatter.shape}")
-        print(f"{dset}_eta shape:     {dset_eta.shape}")
+        logging.info(f"{dset}_scatter shape: {dset_scatter.shape}")
+        logging.info(f"{dset}_eta shape:     {dset_eta.shape}")
         t0 = time.perf_counter()
         dset_preds, dset_loss_vals = eval_model(
             trained_state,
@@ -537,8 +559,8 @@ def main(
             return_sample_losses=False,
         )
         t1 = time.perf_counter()
-        print(f"dset {dset} was evaluated in {t1-t0:.3f} seconds")
-        print(f"dset {dset} losses: {dset_loss_vals}")
+        logging.info(f"dset {dset} was evaluated in {t1-t0:.3f} seconds")
+        logging.info(f"dset {dset} losses: {dset_loss_vals}")
         for loss_name in loss_fn_dict.keys():
             loss_mean = dset_loss_vals[f"{loss_name}_mean"]
             loss_std  = dset_loss_vals[f"{loss_name}_std"]
@@ -546,7 +568,7 @@ def main(
             all_loss_strs[loss_name] += f"{delim_str}{loss_mean:.6e}±{loss_std:.4e}"
 
         if args.output_pred_save:
-            print(f"Saving predictions to disk")
+            logging.info(f"Saving predictions to disk")
             dset_output_pred_dir = os.path.join(
                 args.output_pred_dir,
                 f"{dset}_scattering_objs"
@@ -559,39 +581,64 @@ def main(
                 shard_size=args.output_pred_shard_size,
             )
         else:
-            print(f"Not saving predictions to disk")
+            logging.info(f"Not saving predictions to disk")
 
     for loss_name in loss_fn_dict.keys():
-        print(f"Overall {loss_name}: {all_loss_strs[loss_name]}")
+        logging.info(f"Overall {loss_name}: {all_loss_strs[loss_name]}")
 
     vram_msg = utils.get_memory_info_jax(jax_device, print_msg=False)
-    print(f"After evaluation: {vram_msg}")
+    logging.info(f"After evaluation: {vram_msg}")
+    logging.info("Bye!")
     print("Bye!")
 
 if __name__ == "__main__":
     a = setup_args()
 
-    for name, logger in logging.root.manager.loggerDict.items():
-        logging.getLogger(name).setLevel(logging.WARNING)
+    # for name, logger in logging.root.manager.loggerDict.items():
+    #     logging.getLogger(name).setLevel(logging.WARNING)
 
-    if a.debug:
-        logging.basicConfig(format=FMT, datefmt=TIMEFMT, level=logging.DEBUG)
-    else:
-        logging.basicConfig(format=FMT, datefmt=TIMEFMT, level=logging.INFO)
+    logging.basicConfig(
+        format=FMT, datefmt=TIMEFMT,
+        level=logging.DEBUG if a.debug else logging.INFO,
+        force=True,
+    )
+    # ChatGPT:
+    logging.getLogger('jax').setLevel(logging.WARNING)
+    logging.getLogger("jaxlib").setLevel(logging.WARNING)
+    logging.getLogger('asyncio').setLevel(logging.WARNING)
+    # Many JAX messages go through absl; set its verbosity too
+    try:
+        from absl import logging as absl_logging
+        absl_logging.set_verbosity(absl_logging.WARNING)
+    except Exception:
+        pass
 
-    # # Somehow this double-prints the log entries
+
+    # if a.debug:
+    #     logging.basicConfig(format=FMT, datefmt=TIMEFMT, level=logging.DEBUG)
+    # else:
+    #     logging.basicConfig(format=FMT, datefmt=TIMEFMT, level=logging.INFO)
+
+
+    # Somehow this double-prints the log entries
     # root  = logging.getLogger()
+    # # root.handlers.clear()
     # handler = logging.StreamHandler(sys.stderr)
     # if a.debug:
-    #     handler.level = logging.DEBUG
+    #     # handler.level = logging.DEBUG
+    #     handler.setLevel(logging.DEBUG)
     #     root.setLevel(logging.DEBUG)
     # else:
-    #     handler.level = logging.WARNING
+    #     # handler.level = logging.WARNING
+    #     handler.setLevel(logging.WARNING)
     #     root.setLevel(logging.WARNING)
-
     # formatter = logging.Formatter(FMT, datefmt=TIMEFMT)
     # handler.setFormatter(formatter)
     # root.addHandler(handler)
+
+
+    # From ChatGPT...
+    # logging.getLogger('jax').setLevel(logging.ERROR)
 
     print(f"Received the following arguments: {a}")
     logging.info(f"Received the following arguments: {a}")
