@@ -13,7 +13,7 @@ The repository is developed in JAX and includes four deterministic models as bas
 From the original repo: "The deterministic models were implemented by [Borong Zhang](https://borongzhang.com/) using code provided by the original authors and the [Swirl-Dynamics repository](https://github.com/google-research/swirl-dynamics), while the U-ViT Diffusion Model was implemented by [Martin Guerra](https://sites.google.com/wisc.edu/martinguerra/home) based on the [Swirl-Dynamics probabilistic diffusion project](https://github.com/google-research/swirl-dynamics/tree/main/swirl_dynamics/projects/probabilistic_diffusion)."
 
 ### Adaptations
-We add additional code to handle our dataset. Any other modifications are minimal. (I may also modify the environment information for packages/dependencies.)
+We add additional code to handle our dataset and to make the setup more similar to ours. (I may also modify the environment information for packages/dependencies.)
 
 New files:
 - `ISP_baseline/src/data_io.py` handles loading and saving HDF5 files for the dataset.
@@ -23,7 +23,9 @@ New files:
 - `ISP_baseline/src/predictions.py` helps to evaluate models and save their predictions to disk.
 - `train_EquiNet_Uncompressed.py` is based on `ISP_baseline/examples/EquiNet_Uncompressed_10hSquares.ipynb`.
 - `train_B_EquiNet_Compressed.py` is based on `ISP_baseline/examples/B_EquiNet_Compressed_10hSquares.ipynb`.
+- `ISP_baseline/src/more_callbacks.py` modifies the callback objects for training; helpful for selecting the best epoch by validation error.
+- `scripts/base_template_train_equinet_uncompressed.jinja` is a template for use with slurm and an automated submission library called `badger` [(my fork of badger)](https://github.com/oortsang/badger-modified).
 
 Other modifications worth mentioning:
 - `ISP_baseline/src/utils.py` now has an interface that saves the interpolation and rotation matrices to disk, to avoid the slow setup process each time. This is more noticeable on our larger 192x192 dataset compared to the original 80x80 dataset.
-- `ISP_baseline/models/Uncompressed.py` has an alternate interface for the model that allows for an arbitrary number of input frequencies.
+- `ISP_baseline/models/Uncompressed.py` has an alternate interface for the model that allows for an arbitrary number of input frequencies. We added a multi-frequency variant of `Fstar` to run our dataset, which has 10 frequencies, up from 3.
