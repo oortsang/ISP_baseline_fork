@@ -1,17 +1,17 @@
 ---
 definitions:
-  command: python train_EquiNet_Uncompressed.py
-  template: base_template_train_equinet_uncompressed.jinja
+  command: python eval_EquiNet_Uncompressed.py
+  template: base_template_eval_equinet_uncompressed.jinja
   copy_to_item: true
   default_arguments:
-    mem: "50G"
+    mem: "80G"
     logs_folder: logs/train_wben
     partition: "low-gpu"
     num_nodes: 1
     num_cpu: 2
     num_gpu: 1
     min_vram: "24g"
-    job_walltime: "2:00:00"
+    job_walltime: "8:00:00"
     mail_type: "NONE"
     mail_user: ""
   submission:
@@ -22,12 +22,12 @@ definitions:
       overwrite_scripts: true
   constants:
     base_dir: &BASE_DIR "/home-nfs/oortsang/ISP_baselines_fork"
-    dataset_dir: &DATASET_DIR "/home-nfs/oortsang/rlc-repo/dataset"
-    pred_dir_base: &PRED_DIR_BASE "/home-nfs/oortsang/ISP_baselines_fork/data/predictions"
+    # dataset_dir: &DATASET_DIR "/home-nfs/oortsang/rlc-repo/dataset"
+    pred_dir_base: &PRED_DIR_BASE "/home-nfs/oortsang/rlc-repo/rlc_data/predictions"
     conda_dir: &CONDA_DIR "/share/data/willett-group/oortsang/miniconda"
     conda_env: &CONDA_ENV "jaxisp-v3"
     num_train: &NUM_TRAIN  1000
-    num_val:   &NUM_VAL    1000
+    # num_val:   &NUM_VAL    1000
     num_test:  &NUM_TEST   1000
     N_x: &N_X 192
     N_r: &N_R 192
@@ -37,16 +37,19 @@ arguments:
     name: run_date
     value: 2025-11-02
     metadata_rules: [ !SaveValueInMetadata { path: run_date } ]
+  - !Scalar
+    name: model_date
+    value: 2025-11-02
+    metadata_rules: [ !SaveValueInMetadata { path: model_date } ]
 
   - !Scalar
     name: part_run_name
-    value: "wb_equinet_short_gridsearch"
+    value: "eval_wb_equinet_ood"
     metadata_rules: [ !SaveValueInMetadata { path: part_run_name } ]
 
   - !Scalar
     name: data_input_nus
     value: "(1,2,3,4,5,6,7,8,9,10)"
-    # value: "(2,5,10)"
 
   - !Scalar
     name: N_k
@@ -54,23 +57,35 @@ arguments:
     metadata_rules: [ !SaveValueInMetadata { path: N_k } ]
 
   - !Scalar
+    name: dset_names
+    prefix: "--dset_names"
+    value: "test"
+    metadata_rules: [ !SaveValueInMetadata { path: dset_names } ]
+
+  - !Scalar
+    name: truncate_nums
+    prefix: "--truncate_nums"
+    value: *NUM_TEST
+    metadata_rules: [ !SaveValueInMetadata { path: truncate_nums } ]
+
+  - !Scalar
     name: num_train
     prefix: "--truncate_num_train"
     value: *NUM_TRAIN
     metadata_rules: [ !SaveValueInMetadata { path: num_train } ]
-  - !Scalar
-    name: num_val
-    prefix: "--truncate_num_val"
-    value: *NUM_VAL
-    metadata_rules: [ !SaveValueInMetadata { path: num_val } ]
-  - !Scalar
-    name: num_test
-    prefix: "--truncate_num_test"
-    value: *NUM_TEST
-    metadata_rules: [ !SaveValueInMetadata { path: num_test } ]
+  # - !Scalar
+  #   name: num_val
+  #   prefix: "--truncate_num_val"
+  #   value: *NUM_VAL
+  #   metadata_rules: [ !SaveValueInMetadata { path: num_val } ]
+  # - !Scalar
+  #   name: num_test
+  #   prefix: "--truncate_num_test"
+  #   value: *NUM_TEST
+  #   metadata_rules: [ !SaveValueInMetadata { path: num_test } ]
 
   - !Scalar { name: base_dir, value: *BASE_DIR }
-  - !Scalar { name: dataset_dir, value: *DATASET_DIR, prefix: "--ref_data_dir_base" }
+  # - !Scalar { name: dataset_dir, value: *DATASET_DIR, prefix: "--ref_data_dir_base" }
   - !Scalar
     name: pred_dir_base
     value: *PRED_DIR_BASE
@@ -81,15 +96,39 @@ arguments:
   - !Scalar { name: n_x, value: *N_X, prefix: "--neta" }
   - !Scalar { name: n_r, value: *N_R, prefix: "--nx" }
   - !Scalar { name: blur_sigma, value: "0.0", prefix: "--blur_sigma" }
+  - !Scalar { name: blur_test, value: "false", prefix: "--blur_test" }
   - !Scalar { name: downsample_ratio, value: 1, prefix: "--downsample_ratio" }
-  - !Scalar { name: n_epochs, value: 50, prefix: "--n_epochs" }
+  # - !Scalar { name: n_epochs, value: 300, prefix: "--n_epochs" }
   - !Scalar { name: grad_checkpoint, value: "false", prefix: "--grad_checkpoint" }
-  - !Scalar { name: batch_size, value: 16, prefix: "--batch_size" }
+  # - !Scalar { name: batch_size, value: 16, prefix: "--batch_size" }
   - !Scalar { name: log_batch_size, value: 16, prefix: "--log_batch_size" }
   - !Scalar { name: debug, value: "--debug"}
 
-  - !Scalar { name: output_pred_save, value: "false", prefix: "--output_pred_save" }
+  - !Scalar { name: output_pred_save, value: "true", prefix: "--output_pred_save" }
   - !Scalar { name: output_pred_shard_size, value: 1000, prefix: "--output_pred_shard_size" }
+
+  - !Range
+    name: ood_dataset_name
+    values:
+      - shepp_logan_single
+      - ood_dataset_contrast_0.5
+      - ood_dataset_contrast_1.0
+      - ood_dataset_contrast_1.5
+      - ood_dataset_contrast_1.9
+      - ood_dataset_contrast_2.0
+      - ood_dataset_contrast_2.1
+      - ood_dataset_contrast_2.5
+      - ood_dataset_contrast_3.0
+    metadata_rules: [ !SaveValueInMetadata {path: ood_dataset_name} ]
+
+  - !ArgumentFromMetadata
+    name: dataset_dir
+    prefix: "--ref_data_dir_base"
+    format_rule: "{pred_dir}/2025-09-23_{dset_name}"
+    sources: [
+      { path: ood_dataset_name, destination: dset_name },
+      { path: pred_dir_base,    destination: pred_dir },
+    ]
 
   # Noise settings
   - !Range
@@ -97,6 +136,11 @@ arguments:
     prefix: "--noise_to_signal_ratio"
     values: [ 0.0 ]
     metadata_rules: [!SaveValueInMetadata {path: noise_to_signal_ratio}]
+
+  - !Scalar
+    name: use_noise_seed
+    value: "true"
+    prefix: "--use_noise_seed"
 
   - !Scalar
     name: noise_seed_base_train
@@ -130,8 +174,10 @@ arguments:
     ]
     metadata_rules: [!SaveValueInMetadata {path: noise_seed_list_val}]
   - !ArgumentFromMetadata
-    name: noise_seed_list_test
-    prefix: "--noise_seed_list_test"
+    name: noise_seeds
+    prefix: "--noise_seeds"
+    # name: noise_seed_list_test
+    # prefix: "--noise_seed_list_test"
     format_rule:  "$( seq $(({nsbt}+10000)) 10000 $(({nsbt} + {N_k}*10000)) )"
     sources: [
       { path: noise_seed_base_test, destination: nsbt },
@@ -144,22 +190,19 @@ arguments:
   - !Range
     name: n_cnn_layers_2d
     prefix: "--n_cnn_layers_2d"
-    values: [ 3, 6, 9 ]
+    values: [ 3 ]
     metadata_rules: [ !SaveValueInMetadata { path: n_cnn_layers_2d } ]
   - !Range
     name: n_cnn_channels_2d
     prefix: "--n_cnn_channels_2d"
-    values: [ 6, 12, 24 ]
+    values: [ 24 ]
     metadata_rules: [ !SaveValueInMetadata { path: n_cnn_channels_2d } ]
   - !Range
     name: kernel_size_2d
     prefix: "--kernel_size_2d"
-    # values: [ 3, 5 ]
     values: [ 5 ]
     metadata_rules: [ !SaveValueInMetadata { path: kernel_size_2d } ]
 
-  # Group with architecture since it's like deciding whether to have a
-  # mean/normalization layer
   - !Range
     name: io_norm
     prefix: "--io_norm"
@@ -170,8 +213,14 @@ arguments:
   - !Range
     name: lr_init
     prefix: "--lr_init"
-    values: [ 1e-5, 1e-4 ]
+    values: [ 1e-5 ]
     metadata_rules: [ !SaveValueInMetadata { path: lr_init } ]
+  - !Scalar
+    name: model_step
+    prefix: "--model_step"
+    value: 3720
+    metadata_rules: [ !SaveValueInMetadata { path: model_step } ]
+
 
   # I/O stuff
   - !ArgumentFromMetadata
@@ -200,35 +249,49 @@ arguments:
   - !ArgumentFromMetadata
     name: output_pred_dir
     prefix: "--output_pred_dir"
-    format_rule: "{pred_dir_base}/{run_date}_outputs_{whole_run_name}_{parameters}"
+    # format_rule: "{pred_dir_base}/{run_date}_outputs_{whole_run_name}_{parameters}"
+    # ood_dataset_name
+    format_rule: "{pred_dir_base}/{run_date}_outputs_{whole_run_name}_{ood_dataset_name}"
     sources: [
       { path: pred_dir_base,  destination: pred_dir_base },
       { path: run_date,       destination: run_date },
       { path: whole_run_name, destination: whole_run_name },
       { path: parameters,     destination: parameters },
+      { path: ood_dataset_name, destination: ood_dataset_name },
     ]
     metadata_rules: [ !SaveValueInMetadata { path: output_pred_dir } ]
 
+  - !Scalar
+    name: model_dir
+    prefix: "--model_dir"
+    value: "tmp/2025-11-02_wb_equinet_noise_Nk_10_ntrain_1000\
+      _noise_0.0_arch_3_24_5_false_opt_1e-5"
+    metadata_rules: [ !SaveValueInMetadata { path: model_dir } ]
 
-  - !ArgumentFromMetadata
-    name: work_dir
-    prefix: "--work_dir"
-    format_rule: "tmp/{run_date}_{whole_run_name}_{parameters}"
-    sources: [
-      { path: pred_dir_base,  destination: pred_dir_base },
-      { path: run_date,       destination: run_date },
-      { path: whole_run_name, destination: whole_run_name },
-      { path: parameters,     destination: parameters },
-    ]
-    metadata_rules: [ !SaveValueInMetadata { path: work_dir } ]
+  # - !ArgumentFromMetadata
+  #   name: model_dir
+  #   prefix: "--model_dir"
+  #   # format_rule: "tmp/{model_date}_{whole_run_name}_{parameters}"
+  #   format_rule: "tmp/2025-11-02_wb_equinet_noise_Nk_10_ntrain_1000_noise_0.0_arch_3_24_5_false_opt_1e-5"
+  #   sources: [
+  #     { path: pred_dir_base,  destination: pred_dir_base },
+  #     { path: run_date,       destination: run_date },
+  #     { path: model_date,     destination: model_date },
+  #     { path: whole_run_name, destination: whole_run_name },
+  #     { path: parameters,     destination: parameters },
+  #   ]
+  #   metadata_rules: [ !SaveValueInMetadata { path: model_dir } ]
 
   - !ArgumentFromMetadata
     name: model_name
-    format_rule: "{run_date}_{whole_run_name}_{parameters}"
+    # format_rule: "{model_date}_{whole_run_name}_{parameters}"
+    format_rule: "{run_date}_{whole_run_name}_on_{ood_dataset_name}"
     sources: [
       { path: run_date,       destination: run_date },
+      { path: model_date,     destination: model_date },
       { path: whole_run_name, destination: whole_run_name },
       { path: parameters,     destination: parameters },
+      { path: ood_dataset_name, destination: ood_dataset_name },
     ]
     metadata_rules: [ !SaveValueInMetadata { path: model_name } ]
 

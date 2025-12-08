@@ -1,17 +1,22 @@
+#
+# NOTE: EVAL EQUINET IS STILL FORTHCOMING... DO NOT USE THIS FILE UNTIL THEN
+#
+
+
 ---
 definitions:
-  command: python train_EquiNet_Uncompressed.py
-  template: base_template_train_equinet_uncompressed.jinja
+  command: python eval_EquiNet_Uncompressed.py
+  template: base_template_eval_equinet_uncompressed.jinja
   copy_to_item: true
   default_arguments:
-    mem: "50G"
+    mem: "80G"
     logs_folder: logs/train_wben
     partition: "low-gpu"
     num_nodes: 1
     num_cpu: 2
     num_gpu: 1
     min_vram: "24g"
-    job_walltime: "2:00:00"
+    job_walltime: "8:00:00"
     mail_type: "NONE"
     mail_user: ""
   submission:
@@ -40,13 +45,12 @@ arguments:
 
   - !Scalar
     name: part_run_name
-    value: "wb_equinet_short_gridsearch"
+    value: "wb_equinet_ood"
     metadata_rules: [ !SaveValueInMetadata { path: part_run_name } ]
 
   - !Scalar
     name: data_input_nus
     value: "(1,2,3,4,5,6,7,8,9,10)"
-    # value: "(2,5,10)"
 
   - !Scalar
     name: N_k
@@ -81,8 +85,9 @@ arguments:
   - !Scalar { name: n_x, value: *N_X, prefix: "--neta" }
   - !Scalar { name: n_r, value: *N_R, prefix: "--nx" }
   - !Scalar { name: blur_sigma, value: "0.0", prefix: "--blur_sigma" }
+  - !Scalar { name: blur_test, value: "false", prefix: "--blur_test" }
   - !Scalar { name: downsample_ratio, value: 1, prefix: "--downsample_ratio" }
-  - !Scalar { name: n_epochs, value: 50, prefix: "--n_epochs" }
+  - !Scalar { name: n_epochs, value: 300, prefix: "--n_epochs" }
   - !Scalar { name: grad_checkpoint, value: "false", prefix: "--grad_checkpoint" }
   - !Scalar { name: batch_size, value: 16, prefix: "--batch_size" }
   - !Scalar { name: log_batch_size, value: 16, prefix: "--log_batch_size" }
@@ -91,12 +96,39 @@ arguments:
   - !Scalar { name: output_pred_save, value: "false", prefix: "--output_pred_save" }
   - !Scalar { name: output_pred_shard_size, value: 1000, prefix: "--output_pred_shard_size" }
 
+  - !Range
+    name: ood_dataset_name
+    values:
+      - shepp_logan_single
+      - ood_dataset_contrast_0.5
+      - ood_dataset_contrast_1.0
+      - ood_dataset_contrast_1.5
+      - ood_dataset_contrast_1.9
+      - ood_dataset_contrast_2.0
+      - ood_dataset_contrast_2.1
+      - ood_dataset_contrast_2.5
+      - ood_dataset_contrast_3.0
+    metadata_rules: [ !SaveValueInMetadata {path: ood_dataset_name} ]
+  - !ArgumentFromMetadata
+    name: input_meas_dir
+    prefix: "--input_meas_dir"
+    format_rule: "{pred_dir}/2025-09-23_{dset_name}"
+    sources: [
+      { path: ood_dataset_name, destination: dset_name },
+      { path: pred_dir,         destination: pred_dir },
+    ]
+
   # Noise settings
   - !Range
     name: noise_to_signal_ratio
     prefix: "--noise_to_signal_ratio"
     values: [ 0.0 ]
     metadata_rules: [!SaveValueInMetadata {path: noise_to_signal_ratio}]
+
+  - !Scalar
+    name: use_noise_seed
+    value: "true"
+    prefix: "--use_noise_seed"
 
   - !Scalar
     name: noise_seed_base_train
@@ -144,17 +176,16 @@ arguments:
   - !Range
     name: n_cnn_layers_2d
     prefix: "--n_cnn_layers_2d"
-    values: [ 3, 6, 9 ]
+    values: [ 3 ]
     metadata_rules: [ !SaveValueInMetadata { path: n_cnn_layers_2d } ]
   - !Range
     name: n_cnn_channels_2d
     prefix: "--n_cnn_channels_2d"
-    values: [ 6, 12, 24 ]
+    values: [ 24 ]
     metadata_rules: [ !SaveValueInMetadata { path: n_cnn_channels_2d } ]
   - !Range
     name: kernel_size_2d
     prefix: "--kernel_size_2d"
-    # values: [ 3, 5 ]
     values: [ 5 ]
     metadata_rules: [ !SaveValueInMetadata { path: kernel_size_2d } ]
 
@@ -163,14 +194,16 @@ arguments:
   - !Range
     name: io_norm
     prefix: "--io_norm"
+    # values: [ "false", "true" ]
     values: [ "false" ]
     metadata_rules: [ !SaveValueInMetadata { path: io_norm } ]
+
 
   # Optimization hyperparameters
   - !Range
     name: lr_init
     prefix: "--lr_init"
-    values: [ 1e-5, 1e-4 ]
+    values: [ 1e-5 ]
     metadata_rules: [ !SaveValueInMetadata { path: lr_init } ]
 
   # I/O stuff

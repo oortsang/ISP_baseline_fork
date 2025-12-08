@@ -294,34 +294,38 @@ class UncompressedModelFlexible(nn.Module):
     out_mean: jnp.array = None
     out_std:  jnp.array = None
 
+    multifreq_fstar: bool=True
+
     def setup(self):
         # Checkpoint if requested using flax/linen
-        # Fstar_chkpt = (
-        #     nn.remat(Fstar)
-        #     if self.grad_checkpoint
-        #     else Fstar
-        # )
-        # self.fstar_layers = [
-        #     Fstar_chkpt(
-        #         nx=self.nx,
-        #         neta=self.neta,
-        #         cart_mat=self.cart_mat,
-        #         r_index=self.r_index,
-        #     )
-        #     for _ in range(self.nk)
-        # ]
-        MultifreqFstar_chkpt = (
-            nn.remat(MultifreqFstar)
-            if self.grad_checkpoint
-            else MultifreqFstar
-        )
-        self.mf_fstar = MultifreqFstar_chkpt(
-            nx=self.nx,
-            neta=self.neta,
-            cart_mat=self.cart_mat,
-            r_index=self.r_index,
-            nk=self.nk,
-        )
+        if self.multifreq_fstar:
+            MultifreqFstar_chkpt = (
+                nn.remat(MultifreqFstar)
+                if self.grad_checkpoint
+                else MultifreqFstar
+            )
+            self.mf_fstar = MultifreqFstar_chkpt(
+                nx=self.nx,
+                neta=self.neta,
+                cart_mat=self.cart_mat,
+                r_index=self.r_index,
+                nk=self.nk,
+            )
+        else:
+            Fstar_chkpt = (
+                nn.remat(Fstar)
+                if self.grad_checkpoint
+                else Fstar
+            )
+            self.fstar_layers = [
+                Fstar_chkpt(
+                    nx=self.nx,
+                    neta=self.neta,
+                    cart_mat=self.cart_mat,
+                    r_index=self.r_index,
+                )
+                for _ in range(self.nk)
+            ]
 
         # apply_model = lambda data, params: fstar(params)(data)
         # fstar_params = [jax.tree_util.tree_flatten(elem) for elem in fstar_layers_parameter_list]
@@ -348,15 +352,17 @@ class UncompressedModelFlexible(nn.Module):
 
         # Process each channel separately using Fstar layers
         # and concatenate outputs along channel dimension
-        # y = jnp.concatenate(
-        #     [
-        #         self.fstar_layers[i](inputs[:, :, :, i])
-        #         for i in range(self.nk)
-        #     ],
-        #     axis=-1,
-        # )
+        if self.multifreq_fstar:
+            y = self.mf_fstar(inputs[:, :, :, :])
+        else:
+            y = jnp.concatenate(
+                [
+                    self.fstar_layers[i](inputs[:, :, :, i])
+                    for i in range(self.nk)
+                ],
+                axis=-1,
+            )
         # jax.debug.print(f"Uncompressed apply inputs: {inputs.shape}")
-        y = self.mf_fstar(inputs[:, :, :, :])
         # jax.debug.print(f"y shape: {y.shape}")
 
         for conv_layer in self.convs:

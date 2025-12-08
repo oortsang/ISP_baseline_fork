@@ -30,6 +30,9 @@ def get_loss_fns(loss_fns:list=["rrmse", "rel_l2"]):
     """Get the basic loss functions: rrmse, rel_l2 (maybe later also psnr)
     """
     all_loss_fns_dict = {
+        # Okay, so this is actually equivalent to the relative l2 error
+        # because of how the interface works. The other implementation of
+        # rrmse performs the sqrt AFTER averaging over samples rather than before
         "rrmse": functools.partial(
             # metrics.mean_squared_error,
             mse_alt,
@@ -79,6 +82,7 @@ def eval_model(
     eval_batch_size: int,
     loss_fn_dict: dict,
     return_sample_losses: bool=True,
+    gradients_off: bool=True,
 ) -> Tuple[np.ndarray, dict]:
     """Evaluates a model
     Returns predictions and evaluated loss functions
@@ -115,7 +119,11 @@ def eval_model(
     pred_eta_list = []
     for b, batch in enumerate(dataloader):
         # import pdb; pdb.set_trace()
-        batch_pred = inference_fn(batch["scatter"])
+        model_input = batch["scatter"]
+        if gradients_off:
+            # Not sure if this does anything...
+            model_input = jax.lax.stop_gradient(model_input)
+        batch_pred = inference_fn(model_input)
         batch_true = batch["eta"]
         # print(f"batch_pred shape: {batch_pred.shape}")
         # print(f"batch_true shape: {batch_true.shape}")
@@ -148,7 +156,7 @@ def eval_model(
         # Keep the loss values per sample
         loss_vals_dict = {
             **loss_vals_dict,
-            **agg_loss_vals,
+            **agg_loss_dict,
         }
     else:
         # Just return the aggregate values (mean/std)
@@ -168,6 +176,7 @@ def save_preds_q_cart(
         "x_vals": x_vals,
         "sample_completion": np.ones(q_cart.shape[0], dtype=bool),
         "q_cart": q_cart,
+        "file_completion": True,
     }
     shard_names = save_single_dir_slice(
         pred_dd,

@@ -87,8 +87,9 @@ def mse_alt(
         )
     mse_diffs = jnp.mean(jnp.square(jnp.abs(pred-true)), axis=mse_axes, keepdims=True)
     mse_refs = jnp.mean(jnp.square(jnp.abs(true)), axis=mse_axes, keepdims=True)
+    # mse_dims = ...
 
-    mse_errs = (mse_diffs / mse_refs) if relative else mse_diffs
+    mse_errs = (mse_diffs / mse_refs) if relative else mse_diffs # wrong sort of relative
     mse_errs = mse_errs if squared else jnp.sqrt(mse_errs)
 
     out_mse_errs = mse_errs

@@ -419,7 +419,8 @@ def main(
     logging_callback = LoggingOutput(
         total_train_steps=num_train_steps,
         train_monitors=("train_loss",),
-        eval_monitors=("eval_rel_l2_mean",),
+        # eval_monitors=("eval_rel_l2_mean","eval_rrmse_mean"),
+        eval_monitors=("eval_rel_l2_mean","eval_rrmse_mean"),
     )
     def dummy(*args, **kwargs):
         print(f"args={args}")
@@ -449,9 +450,10 @@ def main(
             workdir, asynchronous=False,
         ),
         metric_aggregation_steps=batches_per_epoch,
+        # metric_aggregation_steps=eval_interval,
         eval_dataloader=val_dloader_looped,
-        eval_every_steps = eval_interval,
-        num_batches_per_eval = log_batches_per_epoch,
+        eval_every_steps=eval_interval,
+        num_batches_per_eval=log_batches_per_epoch,
         callbacks=(
             logging_callback,
             train_state_ckpt_callback,

@@ -1,3 +1,7 @@
+# Evaluation script
+# (OOT, 2025-11-02) I'm not sure if noise seeds are handled correctly
+# (caveat emptor)
+
 import functools
 import os
 import shutil
@@ -81,36 +85,45 @@ def setup_args() -> argparse.Namespace:
         "measurement folders corresponding to the relevant frequencies and data subsets",
     )
     parser.add_argument(
-        "--work_dir", type=str,
+        "--model_dir", type=str,
     )
-    # parser.add_argument(
-    #     "--neta", default=96, type=int
-    # )
-    # parser.add_argument(
-    #     "--nx", default=96, type=int,
-    # )
-    # parser.add_argument(
-    #     "--downsample_ratio", default=1, type=int,
-    # )
+    parser.add_argument(
+        "--model_step", type=int,
+    )
+    parser.add_argument(
+        "--neta", default=96, type=int
+    )
+    parser.add_argument(
+        "--nx", default=96, type=int,
+    )
+    parser.add_argument(
+        "--downsample_ratio", default=1, type=int,
+    )
 
     parser.add_argument(
-        "--blur_sigma", default=0.5, type=float,
+        "--blur_sigma", default=0.0, type=float,
     )
+    parser.add_argument("--blur_test", choices=bool_choices, default="false")
 
     ### Training/validation-related arguments ###
     parser.add_argument("--dset_names", type=str, nargs="+")
-    parser.add_argument("--truncate_nums", type=int)
+
+    parser.add_argument("--truncate_nums", type=int, nargs="+")
     parser.add_argument("--seed", type=int, default=35675)
 
     parser.add_argument("--log_batch_size", type=int, default=16, help="batch size while logging")
     parser.add_argument("--use_noise_seed", choices=bool_choices, default="false")
     parser.add_argument("--noise_seeds", type=int, nargs="+")
     parser.add_argument("--noise_norm_mode", choices=["l2", "inf"], default="inf")
-
     parser.add_argument(
-        "--noise_to_signal_ratio", default=None, type=float
+        "--noise_to_signal_ratio", default=0.0, type=float
     )  # train and test with noise
 
+    # Architecture
+    parser.add_argument("--n_cnn_layers_2d",   type=int, default=9)
+    parser.add_argument("--n_cnn_channels_2d", type=int, default=6)
+    parser.add_argument("--kernel_size_2d", type=int, default=5)
+    parser.add_argument("--grad_checkpoint", choices=bool_choices, default="false")
 
     ### Logging options ###
     parser.add_argument("--debug", default=False, action="store_true")
@@ -142,6 +155,8 @@ def setup_args() -> argparse.Namespace:
     bool_args = [
         "use_noise_seed",
         "output_pred_save",
+        "blur_test",
+        "grad_checkpoint",
     ]
     # Process the boolean arguments from strings
     for bool_arg in bool_args:
@@ -182,16 +197,48 @@ def main(
     kbar_str_list = str_nu_list
     nu_list = [float(str_nu) for str_nu in str_nu_list]
     N_freqs = len(nu_list)
+    nk = N_freqs
     logging.info(f"ref_data_dir_base: {ref_data_dir_base}")
     logging.info(f"nu values received: {str_nu_list}")
 
     # 2. Set up logging functions...
 
-
     # 3. Load NN model
-
+    downsample_ratio = args.downsample_ratio
+    neta = args.neta // downsample_ratio
+    nx   = args.nx   // downsample_ratio
 
     blur_sigma = args.blur_sigma
+    model_dir = os.path.join(os.path.abspath(''), args.model_dir)
+    trained_state = trainers.TrainState.restore_from_orbax_ckpt(
+        # f"{model_dir}/checkpoints", step=None,
+        f"{model_dir}/checkpoints", step=args.model_step,
+    )
+    N_cnn_layers = args.n_cnn_layers_2d
+    N_cnn_channels = args.n_cnn_channels_2d
+    kernel_size = args.kernel_size_2d
+    cart_mat, r_index = utils.load_or_create_mats(
+        neta,
+        nx,
+        mats_dir=os.path.join("tmp", "cart_and_rot_mats"),
+        mats_format="mats_neta{0}_nx{1}.npz",
+        save_if_created=True,
+    )
+    core_module = Uncompressed.UncompressedModelFlexible(
+        nx = nx,
+        neta = neta,
+        cart_mat = cart_mat,
+        r_index = r_index,
+        # New parameters
+        nk=nk,
+        N_cnn_layers=N_cnn_layers,
+        N_cnn_channels=N_cnn_channels,
+        kernel_size=kernel_size,
+        grad_checkpoint=args.grad_checkpoint,
+        # I/O normalization
+        in_norm=False,
+        out_norm=False,
+    )
 
 
     #########################################################
@@ -200,13 +247,15 @@ def main(
     # Common setup
     base_output_dir = args.output_pred_dir if args.output_pred_save else None
 
-
     dset_list = args.dset_names
-    # expt_info_list = [pred_train_meta_dd, pred_val_meta_dd, pred_test_meta_dd]
-    last_eval_dict = {}
-    key_max_num_chars = max(len(key) for key in cart_loss_fn_dd.keys())
-    cart_dd_list = []
+    loss_fn_dict = get_loss_fns(["rrmse", "rel_l2", "psnr"])
+    all_loss_strs = {loss_name: f"" for loss_name in loss_fn_dict.keys()}
 
+    # expt_info_list = [pred_train_meta_dd, pred_val_meta_dd, pred_test_meta_dd]
+    # last_eval_dict = {}
+    # key_max_num_chars = max(len(key) for key in loss_fn_dict.keys())
+    # dd_list = []
+    prev_dd = None
     for i, dset in enumerate(dset_list):
         #########################################################
         # 4b. Load the relevant dataset
@@ -221,49 +270,127 @@ def main(
             base_dir=ref_data_dir_base,
             dir_fmt="{0}_measurements_nu_{1}"
         )
-        print(f"(dset={dset}) ref dirs: {ref_dset_dirs}")
+        logging.info(f"(dset={dset}) ref dirs: {ref_dset_dirs}")
 
-        dset_mfisnet_dd = load_cart_multifreq_dataset(
-            ref_dset_dirs,
-            global_idx_start=0,
-            global_idx_end=NTEST,
-            noise_to_sig_ratio=args.noise_to_signal_ratio,
-            noise_seed=eff_noise_seed_list_test,
-            noise_seed_mode="sequential",
-            noise_norm_mode="inf",
+        if (i>0 and dset == dset_list[i-1]
+            and truncate_num == args.truncate_nums[i-1]
+            ):
+            logging.info(f"Reusing data from the last dset")
+            dset_mfisnet_dd = prev_dd
+        else:
+            dset_mfisnet_dd = load_cart_multifreq_dataset(
+                ref_dset_dirs,
+                global_idx_start=0,
+                global_idx_end=truncate_num,
+                noise_to_sig_ratio=args.noise_to_signal_ratio,
+                noise_seed=eff_noise_seed,
+                noise_seed_mode="sequential",
+                noise_norm_mode="inf",
+            )
+        prev_dd = dset_mfisnet_dd
+        x_vals = dset_mfisnet_dd["x_vals"]
+        logging.info(
+            f"Loaded: {', '.join([f'{key}{val.shape}' for (key, val) in dset_mfisnet_dd.items()])}"
         )
-        print(f"Loaded: {', '.join([f'{key}{val.shape}' for (key, val) in dset_mfisnet_dd.items()])}")
         dset_wb_dd = convert_mfisnet_data_dict(
             dset_mfisnet_dd,
             scatter_as_real=True,
             real_imag_axis=1,
             blur_sigma=blur_sigma,
             downsample_ratio=downsample_ratio,
+            flip_scobj_axes=False,
         )
-    
-        # Try downsampling since the sparsepolartocartesian step is so slow :((
+
         dset_eta     = dset_wb_dd["eta"]
         dset_scatter = dset_wb_dd["scatter"]
-        print(f"dset_eta     shape: {dset_eta.shape}")
-        print(f"dset_scatter shape: {dset_scatter.shape}")
-    
+        logging.info(f"dset_eta     shape: {dset_eta.shape}")
+        logging.info(f"dset_scatter shape: {dset_scatter.shape}")
+
         dset_batch_size = args.log_batch_size
-        dset_dataset, dset_dloader = setup_tf_dataset(
-            dset_eta,
-            dset_scatter,
-            batch_size=dset_batch_size,
+        # dset_dataset, dset_dloader = setup_tf_dataset(
+        #     dset_eta,
+        #     dset_scatter,
+        #     batch_size=dset_batch_size,
+        # )
+
+        # Evaluate and save to disk
+        logging.info(f"{dset}_scatter shape: {dset_scatter.shape}")
+        logging.info(f"{dset}_eta shape:     {dset_eta.shape}")
+        t0 = time.perf_counter()
+        return_sample_losses = True
+        dset_preds, dset_loss_vals = eval_model(
+            trained_state,
+            core_module,
+            # dataset,
+            dset_scatter=dset_scatter,
+            dset_eta=dset_eta,
+            eval_batch_size=args.log_batch_size,
+            loss_fn_dict=loss_fn_dict,
+            return_sample_losses=return_sample_losses,
         )
+        t1 = time.perf_counter()
+        logging.info(f"dset {dset} was evaluated in {t1-t0:.3f} seconds")
+        if return_sample_losses:
+            logging.info(f"Sample losses: {dset_loss_vals['rel_l2']}")
+        else:
+            logging.info(f"dset {dset} losses: {dset_loss_vals}")
+        for loss_name in loss_fn_dict.keys():
+            loss_mean = dset_loss_vals[f"{loss_name}_mean"]
+            loss_std  = dset_loss_vals[f"{loss_name}_std"]
+            delim_str = " " if i > 0 else ""
+            all_loss_strs[loss_name] += (
+                f"{delim_str}{loss_mean:.6e}±{loss_std:.4e}"
+            )
+        if args.output_pred_save:
+            logging.info(f"Saving predictions to disk")
+            dset_output_pred_dir = os.path.join(
+                args.output_pred_dir,
+                f"{dset}_scattering_objs"
+            )
+            save_preds_q_cart(
+                dset_preds,
+                x_vals,
+                dset_output_pred_dir,
+                file_format="scattering_objs_{0}.h5",
+                shard_size=args.output_pred_shard_size,
+            )
+        else:
+            logging.info(f"Not saving predictions to disk")
+    for loss_name in loss_fn_dict.keys():
+        logging.info(f"Overall {loss_name}: {all_loss_strs[loss_name]}")
+    vram_msg = utils.get_memory_info_jax(jax_device, print_msg=False)
+    logging.info(f"After evaluation: {vram_msg}")
+    logging.info("Bye!")
+    print("Bye!")
+
+
 
 if __name__ == "__main__":
     a = setup_args()
 
-    for name, logger in logging.root.manager.loggerDict.items():
-        logging.getLogger(name).setLevel(logging.WARNING)
+    # Logging settings from ChatGPT:
+    logging.basicConfig(
+        format=FMT, datefmt=TIMEFMT,
+        level=logging.DEBUG if a.debug else logging.INFO,
+        force=True,
+    )
+    logging.getLogger('jax').setLevel(logging.WARNING)
+    logging.getLogger("jaxlib").setLevel(logging.WARNING)
+    logging.getLogger('asyncio').setLevel(logging.WARNING)
+    # Many JAX messages go through absl; set its verbosity too
+    try:
+        from absl import logging as absl_logging
+        absl_logging.set_verbosity(absl_logging.WARNING)
+    except Exception:
+        pass
 
-    if a.debug:
-        logging.basicConfig(format=FMT, datefmt=TIMEFMT, level=logging.DEBUG)
-    else:
-        logging.basicConfig(format=FMT, datefmt=TIMEFMT, level=logging.INFO)
+    # for name, logger in logging.root.manager.loggerDict.items():
+    #     logging.getLogger(name).setLevel(logging.WARNING)
+
+    # if a.debug:
+    #     logging.basicConfig(format=FMT, datefmt=TIMEFMT, level=logging.DEBUG)
+    # else:
+    #     logging.basicConfig(format=FMT, datefmt=TIMEFMT, level=logging.INFO)
 
     print(f"Received the following arguments: {a}")
     logging.info(f"Received the following arguments: {a}")

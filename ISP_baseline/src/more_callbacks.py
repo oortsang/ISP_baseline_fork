@@ -33,7 +33,6 @@ Trainer = trainers.BaseTrainer
 
 class LoggingOutput(Callback):
     """logging.info callback to monitor training progress in real time."""
-
     def __init__(
         self,
         total_train_steps: int | None,
@@ -58,6 +57,18 @@ class LoggingOutput(Callback):
       self.last_time = None
       self.last_step = 0
 
+      # Buffer the training log message to ensure that we can
+      # display the validation errors on the correct epoch
+      self.training_log_msg = None
+      self.metrics_formatter = lambda mdict: ", ".join([
+            f"{k}={v:.5e}"
+            for k,v in mdict.items()
+      ])
+
+      # For more stable time estimates, save the times of the last 5 steps
+      self.recent_step_count = 10
+      self.recent_step_times = []
+
     def on_train_begin(self, trainer: Trainer) -> None:
         del trainer
         # self.bar = tqdm.tqdm(total=self.total_train_steps, unit="step")
@@ -67,27 +78,40 @@ class LoggingOutput(Callback):
     def on_train_batches_end(
         self, trainer: Trainer, train_metrics: ComputedMetrics
     ) -> None:
-        # self.bar.update(trainer.train_state.int_step - self.current_step)
+        # Flush the training log message if relevant
+        if self.training_log_msg is not None:
+            logging.info(self.training_log_msg)
+
+        # Proceed with the usual logging
+        # Step information
         self.current_step = trainer.train_state.int_step
+        steps_left = self.total_train_steps - self.current_step
+
+        # Estimate the remaining time
+        curr_time = time.perf_counter()
+        elapsed_time = curr_time - self.start_time
+
+        # Estimate the time per step based on recent history
+        self.recent_step_times = (
+            self.recent_step_times + [curr_time - self.last_time]
+        )[-self.recent_step_count:]
+        recent_step_avg_time = np.mean(self.recent_step_times)
+        step_time = (
+            # (curr_time - self.last_time)
+            recent_step_avg_time
+            / (self.current_step-self.last_step)
+        )
+        est_tot_time = elapsed_time + step_time * steps_left
+
+        # Prepare the monitored values
         self.postfix = {
             monitor: train_metrics[monitor] for monitor in self.train_monitors
         }
-        # self.bar.set_postfix(**postfix, **self.eval_postfix)
-        monitored_vals_dict = {**self.postfix, **self.eval_postfix}
-        monitored_vals_str = ", ".join([
-            f"{k}={v:.5e}"
-            for k,v in monitored_vals_dict.items()
-        ])
-        curr_time = time.perf_counter()
-        rel_time     = curr_time - self.start_time
-        step_time    = (
-            (curr_time - self.last_time)
-            / (self.current_step-self.last_step)
-        )
-        steps_left   = self.total_train_steps-self.current_step
-        est_tot_time = rel_time + step_time * steps_left
-        logging.info(
-            f"({rel_time:.2f}s/~{est_tot_time:.0f}s) "
+
+        monitored_vals_dict = self.postfix
+        monitored_vals_str  = self.metrics_formatter(monitored_vals_dict)
+        self.training_log_msg = (
+            f"({elapsed_time:.2f}s/~{est_tot_time:.0f}s) "
             f"step {self.current_step}/{self.total_train_steps}: "
             f"{monitored_vals_str}"
         )
@@ -98,9 +122,19 @@ class LoggingOutput(Callback):
         self, trainer: Trainer, eval_metrics: ComputedMetrics
     ) -> None:
         del trainer
+        # Flush the training log message if relevant
+        # if self.training_log_msg is not None:
+        #     logging.info(self.training_log_msg)
         self.eval_postfix = {
             monitor: eval_metrics[monitor] for monitor in self.eval_monitors
         }
+        eval_vals_str = self.metrics_formatter(self.eval_postfix)
+        # logging.info(f"Step {self.current_step} eval postfix: {eval_vals_str}")
+        self.training_log_msg += ", " + eval_vals_str
+
+        # Write right away
+        logging.info(self.training_log_msg)
+        self.training_log_msg = None
 
     def on_train_end(self, trainer: Trainer) -> None:
         del trainer
@@ -193,16 +227,53 @@ class TrainStateCheckpointEpochChoice(TrainStateCheckpoint):
                 # metrics=dict(**train_metrics, **self.last_eval_metric),
                 metrics=metrics_for_ser,
             )
+    # def on_eval_batches_end(
+    #     self, trainer: Trainer, eval_metrics: ComputedMetrics
+    # ) -> None:
+    #     del trainer
+    #     self.last_eval_metric = {
+    #         k: np.array(v).item()
+    #         for k,v in eval_metrics.items()
+    #     }
+    #     # print(f"eval metrics: {self.last_eval_metric}")
+
+    ### Re-written logic to save after evaluations only ###
+    def on_train_batches_end(
+        self, trainer: Trainer, train_metrics: ComputedMetrics
+    ) -> None:
+        self.last_train_metrics = {
+            k: np.array(v).item()
+            for k,v in train_metrics.items()
+        }
+
     def on_eval_batches_end(
         self, trainer: Trainer, eval_metrics: ComputedMetrics
     ) -> None:
-        del trainer
-        self.last_eval_metric = {
+        self.last_eval_metrics = {
             k: np.array(v).item()
             for k,v in eval_metrics.items()
         }
-        # print(f"eval metrics: {self.last_eval_metric}")
-  
+        cur_step = trainer.train_state.int_step
+        should_save = self.ckpt_manager.should_save(cur_step)
+        if should_save:
+            # logging.info("Asking checkpoint manager to save weights...")
+            metrics_for_ser = {
+                k: np.array(v).item()
+                for k,v in
+                dict(**self.last_train_metrics, **eval_metrics).items()
+            }
+            self.ckpt_manager.save(
+                step=cur_step,
+                # This always saves the unreplicated train state.
+                # Converting to np array seems necessary for multi-host environments.
+                args=ocp.args.Composite(**{
+                    self.train_state_field: ocp.args.StandardSave(
+                        jax.tree.map(np.array, trainer.unreplicated_train_state)
+                    )
+                }),
+                metrics=metrics_for_ser,
+            )
+
     def on_train_end(self, trainer: Trainer) -> None:
         # Always save a checkpoint at the end of training.
         if self.ckpt_manager.latest_step() != trainer.train_state.int_step:
@@ -210,7 +281,7 @@ class TrainStateCheckpointEpochChoice(TrainStateCheckpoint):
             metrics_for_ser = {
                 k: np.array(v).item()
                 for k,v in
-                {**self.last_train_metric, **self.last_eval_metric}.items()
+                {**self.last_train_metrics, **self.last_eval_metrics}.items()
             }
             # print(f"metrics...{metrics_for_ser}")
             self.ckpt_manager.save(
@@ -229,4 +300,3 @@ class TrainStateCheckpointEpochChoice(TrainStateCheckpoint):
                 force=True,
             )
             self.ckpt_manager.wait_until_finished()
-            

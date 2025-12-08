@@ -27,6 +27,9 @@ which python
 NU_ARG=$(echo "{{ data_input_nus }}" | sed "s/(\|)\|\| //g" | sed "s/,/ /g")
 NU_NAME=$(echo ${NU_ARG} | sed "s/ /_/g")
 
+# dataset dir: {{ dataset_dir }}
+# ood_dataset_name: {{ood_dataset_name}}
+
 {{ command }} \
 {{ dataset_dir }} \
 --data_input_nus ${NU_ARG} \
@@ -35,28 +38,19 @@ NU_NAME=$(echo ${NU_ARG} | sed "s/ /_/g")
 {{ downsample_ratio }} \
 {{ blur_sigma }} \
 {{ blur_test }} \
-{{ num_train }} \
-{{ num_val }} \
-{{ num_test }} \
+{{ truncate_nums }} \
+{{ dset_names }} \
 {{ n_cnn_layers_2d }} \
 {{ n_cnn_channels_2d }} \
 {{ kernel_size_2d }} \
-{{ lr_init }} \
-{{ io_norm }} \
-{{ n_epochs }} \
 {{ grad_checkpoint }} \
 {{ batch_size }} \
 {{ log_batch_size }} \
-{{ n_epochs_per_log }} \
 {{ output_pred_save }} \
 {{ output_pred_shard_size }} \
 {{ output_pred_dir }} \
-{{ work_dir }} \
-{{ noise_to_signal_ratio }} \
-{{ use_noise_seed }} \
-{{ noise_seed_list_train }} \
-{{ noise_seed_list_val }} \
-{{ noise_seed_list_test }} \
+{{ model_dir }} \
+{{ model_step }} \
 {{ debug }}
 
 date
