@@ -13,7 +13,7 @@ The repository is developed in JAX and includes four deterministic models as bas
 From the original repo: "The deterministic models were implemented by [Borong Zhang](https://borongzhang.com/) using code provided by the original authors and the [Swirl-Dynamics repository](https://github.com/google-research/swirl-dynamics), while the U-ViT Diffusion Model was implemented by [Martin Guerra](https://sites.google.com/wisc.edu/martinguerra/home) based on the [Swirl-Dynamics probabilistic diffusion project](https://github.com/google-research/swirl-dynamics/tree/main/swirl_dynamics/projects/probabilistic_diffusion)."
 
 ### Adaptations
-We add additional code to handle our dataset and to make the setup more similar to ours. (I may also modify the environment information for packages/dependencies.)
+We add additional code to handle our dataset and to make the setup more similar to ours. We focus on the Uncompressed model. (We may also modify the environment information for packages/dependencies.)
 
 New files:
 - `ISP_baseline/src/data_io.py` handles loading and saving HDF5 files for the dataset.
